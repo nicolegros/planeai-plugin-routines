@@ -4,15 +4,15 @@ A PlaneAI plugin that creates tasks on a schedule.
 A routine names a project, a schedule and a task template, such as a retro every Friday at 09:00 or an invoice reminder on the first of the month.
 
 Open **Routines** from Cmd+K to manage them.
-Each routine has a name, an on/off switch, a project, a schedule, and the task's title, description, priority and tags.
-The list shows when each routine runs next, the last task it created, and any error, and **Run now** creates a task immediately.
+Each routine has a name, an on/off switch, a project, a schedule, the task's title, description, priority and tags, and whether PlaneAI starts a session on the task.
+The list shows when each routine runs next, whether it starts a session, the last task it created, and any error, and **Run now** creates a task immediately.
 
 ## Requirements
 
-- A PlaneAI build whose plugin host offers `host.tasks.create` for top-level tasks.
-  An older PlaneAI answers that it does not know the method, and the routine shows "This PlaneAI version cannot create tasks from plugins. Update PlaneAI."
+- A PlaneAI build whose plugin host offers `host.tasks.create` for top-level tasks, with its `start` option, and the `sessions.start` capability.
+  A PlaneAI that does not know `sessions.start` refuses to install the plugin.
 
-The plugin asks for the `settings`, `projects.read` and `tasks.create` capabilities.
+The plugin asks for the `settings`, `projects.read`, `tasks.create` and `sessions.start` capabilities.
 
 ## Behavior
 
@@ -22,6 +22,12 @@ The plugin asks for the `settings`, `projects.read` and `tasks.create` capabilit
 - **Placeholders.** The title and description may use `{{date}}` (2026-10-06), `{{time}}` (09:00), `{{weekday}}` (Tuesday), `{{week}}` (ISO week number), `{{month}}` (October), `{{year}}` (2026) and `{{routine}}` (the routine's name).
   They are filled in from the time the task was due, not the time it was created, and unknown placeholders are left as written.
 - **Priority.** None, Low, Medium or High, PlaneAI's own levels, where a higher level is more urgent.
+- **Sessions.** Like **Start session immediately** in PlaneAI's task form, which is also the default here, a routine can have PlaneAI start a session on each task it creates.
+  It picks the provider (PlaneAI's default unless one is chosen), whether the session gets a worktree, and auto-approve, which is off for providers that do not support it.
+  The branch, session name and prompt follow PlaneAI's task templates, and the task moves to In Progress.
+  Routines saved before this option existed start a session too.
+  PlaneAI starts the session in the background, at most once per task, and reports a failed start itself; the routine only shows an error when PlaneAI refuses the request outright.
+  With PlaneAI's `local` session backend, the agent only starts when its terminal is opened, so a routine's session waits until you open it.
 - **Checking.** PlaneAI calls the plugin every 30 seconds while it is enabled, and right after the routines are saved.
   Set `tick_interval_ms` in the plugin's settings to change the interval.
 - **Catch-up.** Runs missed while PlaneAI was closed collapse into one task for the most recent one, as long as it is within 400 days.
