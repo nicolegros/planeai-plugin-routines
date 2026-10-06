@@ -5,7 +5,7 @@ A routine names a project, a schedule and a task template, such as a retro every
 
 Open **Routines** from the **Routines** button at the top of PlaneAI's sidebar, under **New session** and **New project**, or from Cmd+K, to manage them.
 The button shows when the next enabled routine runs: `09:00` for today, `Mon 09:00` within the week, `Oct 20 09:00` further out, and nothing when no routine is enabled.
-It refreshes every 30 seconds.
+It refreshes every 30 seconds, and in a sidebar narrower than 220px it shows only its icon, like the buttons beside it.
 Each routine has a name, an on/off switch, a project, a schedule, the task's title, description, priority and tags, and whether PlaneAI starts a session on the task.
 The list shows when each routine runs next, whether it starts a session, the last task it created, and any error, and **Run now** creates a task immediately.
 

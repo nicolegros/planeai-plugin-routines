@@ -68,6 +68,7 @@ describe("the sidebar button", () => {
     }));
     await render(context);
     expect(label()).toBe("Routines");
+    expect(button().getAttribute("aria-label")).toBe("Routines");
     expect(hint()).toBe("09:00");
   });
 

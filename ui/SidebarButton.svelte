@@ -28,7 +28,7 @@
   });
 </script>
 
-<button type="button" onclick={() => context.host.navigation.open("routines", "routines")}>
+<button type="button" aria-label="Routines" onclick={() => context.host.navigation.open("routines", "routines")}>
   <span class="name">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="m17 2 4 4-4 4" />
@@ -109,5 +109,13 @@
     color: var(--planeai-text-subtle);
     font-family: var(--planeai-font-mono);
     font-size: 10px;
+  }
+
+  /* PlaneAI's header buttons drop to their icon below a 220px sidebar: its border and padding leave a frame under 195px. */
+  @media (max-width: 194.98px) {
+    .label,
+    .hint {
+      display: none;
+    }
   }
 </style>
