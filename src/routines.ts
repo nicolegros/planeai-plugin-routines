@@ -13,7 +13,10 @@ export const PLUGIN_VERSION = "0.0.0";
 const INVALID_PARAMS = -32602;
 const METHOD_NOT_FOUND = -32601;
 
-/** `host.tasks.create` params; PlaneAI dedupes on (plugin, operation_id). */
+/**
+ * `host.tasks.create` params; PlaneAI dedupes on (plugin, operation_id). With `start`, it also
+ * starts the task's session in the background, once, unless the task already has one.
+ */
 export interface TaskRequest {
   project_path: string;
   operation_id: string;
@@ -21,6 +24,7 @@ export interface TaskRequest {
   description: string;
   priority: number;
   tags: string[];
+  start?: { provider: string | null; use_worktree: boolean; auto_approve: boolean };
 }
 
 export interface CreatedTask {
@@ -28,10 +32,16 @@ export interface CreatedTask {
   [field: string]: unknown;
 }
 
+/** `session` is set only when the request asked for a start. */
+export interface TaskCreation {
+  task: CreatedTask;
+  session?: "starting" | "exists";
+}
+
 /** The PlaneAI callbacks the plugin makes, each within the host request whose signal it is given. */
 export interface Host {
   settings(signal?: AbortSignal): Promise<unknown>;
-  createTask(request: TaskRequest, signal?: AbortSignal): Promise<CreatedTask>;
+  createTask(request: TaskRequest, signal?: AbortSignal): Promise<TaskCreation>;
 }
 
 export interface RoutineStatus {
@@ -44,6 +54,7 @@ export interface RoutineStatus {
 
 function taskRequest(routine: Routine, at: Date, operation_id: string): TaskRequest {
   const context = { at, routine: routine.name };
+  const { enabled, provider, use_worktree, auto_approve } = routine.task.start;
   return {
     project_path: routine.project_path,
     operation_id,
@@ -51,6 +62,7 @@ function taskRequest(routine: Routine, at: Date, operation_id: string): TaskRequ
     description: render(routine.task.description, context),
     priority: routine.task.priority,
     tags: routine.task.tags,
+    ...(enabled ? { start: { provider, use_worktree, auto_approve } } : {}),
   };
 }
 
@@ -129,7 +141,7 @@ export class RoutinesPlugin {
     const due = latestOccurrence(routine.schedule, new Date(state.last_fired), now);
     if (!due) return { state, created: false };
     try {
-      const task = await this.host.createTask(taskRequest(routine, due, occurrenceId(routine, due)), signal);
+      const { task } = await this.host.createTask(taskRequest(routine, due, occurrenceId(routine, due)), signal);
       return { state: { fingerprint, last_fired: due.toISOString(), last_task_key: task.key, last_error: null }, created: true };
     } catch (error) {
       // last_fired stays, so the next tick retries the same operation id.
@@ -158,7 +170,7 @@ export class RoutinesPlugin {
     };
   }
 
-  private async runNow(params: unknown, signal?: AbortSignal): Promise<{ task: CreatedTask }> {
+  private async runNow(params: unknown, signal?: AbortSignal): Promise<TaskCreation> {
     const id = typeof params === "object" && params !== null ? (params as Record<string, unknown>).id : undefined;
     if (typeof id !== "string" || !id) throw new RpcError(INVALID_PARAMS, "id must be a nonempty string");
     const { routines, problems } = parseRoutines(await this.host.settings(signal));
@@ -168,7 +180,7 @@ export class RoutinesPlugin {
     if (!routine) throw new RpcError(INVALID_PARAMS, "This routine no longer exists.");
     const now = this.now();
     try {
-      return { task: await this.host.createTask(taskRequest(routine, now, `routine:${id}:manual:${now.toISOString()}`), signal) };
+      return await this.host.createTask(taskRequest(routine, now, `routine:${id}:manual:${now.toISOString()}`), signal);
     } catch (error) {
       throw new RpcError(error instanceof RpcError ? error.code : -32000, failure(error));
     }

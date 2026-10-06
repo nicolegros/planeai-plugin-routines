@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import { checkRoutine, parseRoutines, routineKey, type Routine } from "../src/routine";
   import { newDraft, newId, toDraft, toEntry, type Draft } from "./draft";
-  import type { CreatedTask, Project, RoutineStatus, RoutinesUiContext } from "./host";
+  import type { Project, RoutineStatus, RoutinesUiContext, TaskCreation } from "./host";
   import RoutineEditor from "./RoutineEditor.svelte";
   import RoutineRow from "./RoutineRow.svelte";
 
@@ -127,8 +127,8 @@
   async function runNow(routine: Routine): Promise<void> {
     running = { ...running, [routine.id]: true };
     try {
-      const { task } = await context.host.call<{ task: CreatedTask }>("routines.runNow", { id: routine.id });
-      context.host.data.notify(`Created ${task.key}`, "success");
+      const { task, session } = await context.host.call<TaskCreation>("routines.runNow", { id: routine.id });
+      context.host.data.notify(session === "starting" ? `Created ${task.key}. Its session is starting.` : `Created ${task.key}`, "success");
     } catch (reason) {
       context.host.data.notify(`Could not run ${routine.name}: ${describeError(reason)}`, "error");
     } finally {

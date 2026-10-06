@@ -22,7 +22,7 @@ function harness(settings: Record<string, unknown>, statuses: RoutineStatus[] = 
   const replaced: Record<string, unknown>[] = [];
   const call = vi.fn(async (method: string, params?: unknown) => {
     if (method === "routines.status") return { routines: statuses };
-    if (method === "routines.runNow") return { task: { key: "APP-7", params } };
+    if (method === "routines.runNow") return { task: { key: "APP-7", params }, session: "starting" };
     throw new Error(`unexpected ${method}`);
   });
   const context: RoutinesUiContext = {
@@ -216,7 +216,7 @@ describe("Routines pane", () => {
     button("Run Weekly retro now").click();
     await settle();
     expect(call).toHaveBeenCalledWith("routines.runNow", { id: "r1" });
-    expect(notify).toHaveBeenCalledWith("Created APP-7", "success");
+    expect(notify).toHaveBeenCalledWith("Created APP-7. Its session is starting.", "success");
     call.mockRejectedValueOnce(new Error("project was not found or is hidden"));
     button("Run Weekly retro now").click();
     await settle();

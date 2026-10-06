@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 // Plays PlaneAI against the staged sidecar: a routine whose last run was two days ago is due,
-// so one tick must create exactly one task for today's occurrence and record it.
+// so one tick must create exactly one task for today's occurrence, ask for its session, and record it.
 const [packageRoot, platform] = process.argv.slice(2);
 if (!packageRoot || !platform) throw new Error("usage: node scripts/smoke.mjs <package-root> <platform>");
 
@@ -28,7 +28,13 @@ const settings = {
       enabled: true,
       project_path: "/work/app",
       schedule: { kind: "weekly", time: "00:00", weekdays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] },
-      task: { title: "Smoke {{date}}", description: "Created by {{routine}}", priority: 2, tags: ["smoke"] },
+      task: {
+        title: "Smoke {{date}}",
+        description: "Created by {{routine}}",
+        priority: 2,
+        tags: ["smoke"],
+        start: { enabled: true, provider: "claude", use_worktree: true, auto_approve: false },
+      },
     },
   ],
 };
@@ -96,7 +102,7 @@ try {
 
   const due = await request(2, "routines.tick", {
     ...settingsCallback,
-    "host.tasks.create": () => ({ result: { task: { key: "SMK-1", title: "Smoke" } } }),
+    "host.tasks.create": () => ({ result: { task: { key: "SMK-1", title: "Smoke" }, session: "starting" } }),
   });
   assert.deepEqual(due.response.result, { created: 1 });
   const occurrence = today.toISOString();
@@ -108,6 +114,7 @@ try {
     description: "Created by Smoke",
     priority: 2,
     tags: ["smoke"],
+    start: { provider: "claude", use_worktree: true, auto_approve: false },
   });
   assert.deepEqual(JSON.parse(fs.readFileSync(statePath, "utf8")), {
     smoke: { fingerprint: "0 0 * * *", last_fired: occurrence, last_task_key: "SMK-1", last_error: null },
@@ -121,7 +128,7 @@ try {
   assert.deepEqual(shutdown.response.result, { stopping: true });
   const code = await new Promise((resolve) => child.on("exit", resolve));
   assert.equal(code, 0, "the sidecar exits after shutdown");
-  console.log(`smoke: one due routine created ${create.params.operation_id} and recorded SMK-1 for ${platform}`);
+  console.log(`smoke: one due routine created ${create.params.operation_id} with a ${create.params.start.provider} session and recorded SMK-1 for ${platform}`);
 } catch (error) {
   child.kill();
   console.error(error.message);

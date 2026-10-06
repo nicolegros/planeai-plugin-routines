@@ -1,4 +1,4 @@
-import type { CreatedTask, RoutineStatus } from "../src/routines";
+import type { RoutineStatus, TaskCreation } from "../src/routines";
 
 export interface Project {
   id: string;
@@ -21,4 +21,4 @@ export interface RoutinesUiContext {
   };
 }
 
-export type { CreatedTask, RoutineStatus };
+export type { RoutineStatus, TaskCreation };

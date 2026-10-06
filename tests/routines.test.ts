@@ -35,7 +35,7 @@ function harness(routines: unknown[] = [retro()]) {
       world.beforeCreate();
       if (world.failure) throw world.failure;
       created.push(request);
-      return { key: `APP-${created.length}`, title: request.title };
+      return { task: { key: `APP-${created.length}`, title: request.title }, ...(request.start ? { session: "starting" as const } : {}) };
     },
   };
   const plugin = new RoutinesPlugin(host, new StateStore(statePath), () => world.now);
@@ -46,6 +46,10 @@ function harness(routines: unknown[] = [retro()]) {
 }
 
 describe("RoutinesPlugin", () => {
+  it("asks for the capabilities it uses, including starting sessions", () => {
+    expect(manifest.capabilities).toEqual(["settings", "projects.read", "tasks.create", "sessions.start"]);
+  });
+
   it("handshakes with the identity the manifest declares", async () => {
     const result = await harness().plugin.handle("plugin.handshake", { host_api_version: manifest.host_api_version });
     expect(result).toEqual({
@@ -80,9 +84,32 @@ describe("RoutinesPlugin", () => {
         description: "Tuesday at 09:00",
         priority: 3,
         tags: ["ritual"],
+        start: { provider: null, use_worktree: true, auto_approve: true },
       },
     ]);
     expect(state().r1).toEqual({ fingerprint: "0 9 * * 1,2,3,4,5", last_fired: "2026-10-06T13:00:00.000Z", last_task_key: "APP-1", last_error: null });
+  });
+
+  it("asks PlaneAI to start the routine's session, or leaves start out when the routine does not start one", async () => {
+    const { tick, at, created } = harness([
+      retro({ task: { title: "Review", start: { enabled: true, provider: "codex", use_worktree: false, auto_approve: false } } }),
+      retro({ id: "r2", task: { title: "Plan", start: { enabled: false, provider: "codex", use_worktree: false, auto_approve: false } } }),
+    ]);
+    await tick();
+    at("2026-10-06T13:00:10Z");
+    await expect(tick()).resolves.toEqual({ created: 2 });
+    expect(created).toEqual([
+      {
+        project_path: "/work/app",
+        operation_id: "routine:r1:2026-10-06T13:00:00Z",
+        title: "Review",
+        description: "",
+        priority: 0,
+        tags: [],
+        start: { provider: "codex", use_worktree: false, auto_approve: false },
+      },
+      { project_path: "/work/app", operation_id: "routine:r2:2026-10-06T13:00:00Z", title: "Plan", description: "", priority: 0, tags: [] },
+    ]);
   });
 
   it("collapses the occurrences missed while PlaneAI was closed into one task for the latest", async () => {
@@ -194,7 +221,7 @@ describe("RoutinesPlugin", () => {
     await tick();
     world.settings = { routines: [retro({ enabled: false })] };
     at("2026-10-06T15:30:12.345Z");
-    await expect(plugin.handle("routines.runNow", { id: "r1" })).resolves.toEqual({ task: { key: "APP-1", title: "Retro 2026-10-06" } });
+    await expect(plugin.handle("routines.runNow", { id: "r1" })).resolves.toEqual({ task: { key: "APP-1", title: "Retro 2026-10-06" }, session: "starting" });
     expect(created).toEqual([
       {
         project_path: "/work/app",
@@ -203,6 +230,7 @@ describe("RoutinesPlugin", () => {
         description: "Tuesday at 11:30",
         priority: 3,
         tags: ["ritual"],
+        start: { provider: null, use_worktree: true, auto_approve: true },
       },
     ]);
     expect(state().r1.last_fired).toBe("2026-10-06T12:00:00.000Z");

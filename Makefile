@@ -51,7 +51,7 @@ package: build-ui build-sidecar
 verify-package: package
 	node scripts/verify-package-handshake.mjs $(DIST) $(PLATFORM)
 
-# Plays PlaneAI against the staged sidecar: a due routine must create exactly one task.
+# Plays PlaneAI against the staged sidecar: a due routine must create exactly one task and ask for its session.
 smoke: package
 	node scripts/smoke.mjs $(DIST) $(PLATFORM)
 

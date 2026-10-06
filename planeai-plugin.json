@@ -13,7 +13,8 @@
   "capabilities": [
     "settings",
     "projects.read",
-    "tasks.create"
+    "tasks.create",
+    "sessions.start"
   ],
   "background_service": {
     "method": "routines.tick",

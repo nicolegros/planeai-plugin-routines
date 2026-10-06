@@ -19,9 +19,11 @@ const plugin = new RoutinesPlugin(
   {
     settings: async (signal) => object(await peer.request("host.settings.get", null, signal), "settings").settings,
     createTask: async (request, signal) => {
-      const task = object(object(await peer.request("host.tasks.create", request, signal), "a task").task, "a task");
+      const created = object(await peer.request("host.tasks.create", request, signal), "a task");
+      const task = object(created.task, "a task");
       if (typeof task.key !== "string") throw new RpcError(-32603, "PlaneAI returned a task without a key");
-      return task as CreatedTask;
+      const session = created.session === "starting" || created.session === "exists" ? created.session : undefined;
+      return { task: task as CreatedTask, ...(session ? { session } : {}) };
     },
   },
   new StateStore(join(dataDir, "routines-state.json")),
