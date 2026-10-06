@@ -6,6 +6,7 @@
   import { PRESETS, PRIORITY_LABELS, toEntry, toSchedule, type Draft } from "./draft";
   import { absolute } from "./format";
   import type { Project } from "./host";
+  import { findProvider, providerName, type SessionProviders } from "./providers";
 
   let {
     initial,
@@ -13,6 +14,9 @@
     projects,
     projectsFailure,
     onRetryProjects,
+    providers,
+    providersFailure,
+    onRetryProviders,
     onSave,
     onCancel,
   }: {
@@ -21,6 +25,9 @@
     projects: Project[] | null;
     projectsFailure: string | null;
     onRetryProjects: () => void;
+    providers: SessionProviders | null;
+    providersFailure: string | null;
+    onRetryProviders: () => void;
     onSave: (draft: Draft) => void;
     onCancel: () => void;
   } = $props();
@@ -55,6 +62,10 @@
     }
     return found;
   });
+  const provider = $derived(findProvider(providers, draft.start.provider));
+  const knownProvider = $derived(!providers || draft.start.provider === null || providers.providers.some((candidate) => candidate.key === draft.start.provider));
+  /** As in PlaneAI's task form: the draft keeps the user's choice, the provider decides whether it applies. */
+  const autoApproveBlocked = $derived(provider && !provider.auto_approve ? `${provider.label} does not support auto-approve.` : null);
   const previewTitle = $derived(runs[0] && draft.title.trim() ? render(draft.title.trim(), { at: runs[0], routine: draft.name.trim() }) : null);
 
   onMount(() => nameInput?.focus());
@@ -69,7 +80,7 @@
 
   function submit(event: SubmitEvent): void {
     event.preventDefault();
-    if (problems.size === 0) onSave(draft);
+    if (problems.size === 0) onSave({ ...draft, start: { ...draft.start, auto_approve: draft.start.auto_approve && !autoApproveBlocked } });
   }
 
   function onKeydown(event: KeyboardEvent): void {
@@ -209,6 +220,56 @@
     </div>
   </fieldset>
 
+  <fieldset class="section">
+    <legend class="label">Session</legend>
+    <label class="check">
+      <input type="checkbox" bind:checked={draft.start.enabled} />
+      Start session immediately
+    </label>
+    {#if draft.start.enabled}
+      <div class="grid">
+        <label class="field" data-field="provider">
+          <span class="label">Provider</span>
+          <select bind:value={() => draft.start.provider ?? "", (key) => (draft.start.provider = key || null)} disabled={!providers}>
+            {#if !providers}
+              <option value={draft.start.provider ?? ""}>{providersFailure ? "Providers unavailable" : "Loading providers…"}</option>
+            {:else}
+              <option value="">Default ({providerName(providers, null)})</option>
+              {#if !knownProvider}
+                <option value={draft.start.provider}>{draft.start.provider} (unavailable)</option>
+              {/if}
+              {#each providers.providers as choice (choice.key)}
+                <option value={choice.key}>{choice.label}</option>
+              {/each}
+            {/if}
+          </select>
+        </label>
+        <div class="checks">
+          <label class="check">
+            <input type="checkbox" bind:checked={draft.start.use_worktree} />
+            Worktree
+          </label>
+          <label class="check">
+            <input
+              type="checkbox"
+              bind:checked={() => draft.start.auto_approve && !autoApproveBlocked, (value) => (draft.start.auto_approve = value)}
+              disabled={!!autoApproveBlocked}
+              aria-describedby={autoApproveBlocked ? "auto-approve-hint" : undefined}
+            />
+            Auto-approve
+          </label>
+        </div>
+      </div>
+      {#if providersFailure}
+        <span class="field-problem" id="providers-problem">{providersFailure} <button type="button" class="link" onclick={onRetryProviders}>Retry</button></span>
+      {/if}
+      {#if autoApproveBlocked}
+        <span class="hint" id="auto-approve-hint">{autoApproveBlocked}</span>
+      {/if}
+      <p class="hint" id="session-hint">The branch, session name and prompt follow PlaneAI's task templates.</p>
+    {/if}
+  </fieldset>
+
   <section class="preview" aria-label="Preview">
     <h3>Preview</h3>
     {#if !schedule}
@@ -256,6 +317,15 @@
   .hint, .muted { color: var(--planeai-text-muted); font-size: 12px; }
   .field-problem { color: var(--planeai-danger); font-size: 12px; }
   .hint code { margin-right: var(--planeai-space-1); padding: 0 3px; border-radius: 4px; background: var(--planeai-surface-raised); }
+  .check { display: inline-flex; align-items: center; gap: var(--planeai-space-2); width: fit-content; cursor: pointer; }
+  /* Drawn like the row's switch: WebKit's native box turns gray with the dark theme's light accent. */
+  .check input { appearance: none; position: relative; flex: none; width: 16px; height: 16px; margin: 0; padding: 0; border: 1px solid var(--planeai-border-strong); border-radius: 4px; background: var(--planeai-main); cursor: inherit; }
+  .check input:checked { border-color: var(--planeai-accent); background: var(--planeai-accent); }
+  .check input:checked::after { content: ""; position: absolute; top: 2px; left: 5px; width: 4px; height: 8px; border: solid var(--planeai-on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .check input:disabled { opacity: 0.55; }
+  .check:has(input:disabled) { color: var(--planeai-text-muted); cursor: not-allowed; }
+  /* Bottom-aligned with the provider select; nothing may follow the select inside its field. */
+  .checks { display: flex; flex-wrap: wrap; align-items: center; gap: var(--planeai-space-4); align-self: end; min-height: 34px; }
   .days { display: flex; flex-wrap: wrap; gap: var(--planeai-space-2); }
   .chip { min-width: 52px; border-radius: 999px; background: var(--planeai-main); }
   .chip[aria-pressed="true"], .chip[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--planeai-accent); background: var(--planeai-accent); color: var(--planeai-on-accent); }

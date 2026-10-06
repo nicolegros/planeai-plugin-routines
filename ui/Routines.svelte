@@ -3,6 +3,7 @@
   import { checkRoutine, parseRoutines, routineKey, type Routine } from "../src/routine";
   import { newDraft, newId, toDraft, toEntry, type Draft } from "./draft";
   import type { Project, RoutineStatus, RoutinesUiContext, TaskCreation } from "./host";
+  import type { SessionProviders } from "./providers";
   import RoutineEditor from "./RoutineEditor.svelte";
   import RoutineRow from "./RoutineRow.svelte";
 
@@ -15,6 +16,8 @@
   let loadFailure = $state<string | null>(null);
   let projects = $state<Project[] | null>(null);
   let projectsFailure = $state<string | null>(null);
+  let providers = $state<SessionProviders | null>(null);
+  let providersFailure = $state<string | null>(null);
   let statuses = $state<Record<string, RoutineStatus>>({});
   let statusFailure = $state<string | null>(null);
   let now = $state(new Date());
@@ -53,6 +56,15 @@
     }
   }
 
+  async function loadProviders(): Promise<void> {
+    providersFailure = null;
+    try {
+      providers = await context.host.rpc.call<SessionProviders>("sessions.providers");
+    } catch (reason) {
+      providersFailure = `Could not load providers: ${describeError(reason)}`;
+    }
+  }
+
   async function refreshStatus(): Promise<void> {
     now = new Date();
     try {
@@ -67,6 +79,7 @@
   onMount(() => {
     void load();
     void loadProjects();
+    void loadProviders();
     void refreshStatus();
     const timer = setInterval(() => void refreshStatus(), REFRESH_MS);
     return () => clearInterval(timer);
@@ -164,6 +177,9 @@
         {projects}
         {projectsFailure}
         onRetryProjects={() => void loadProjects()}
+        {providers}
+        {providersFailure}
+        onRetryProviders={() => void loadProviders()}
         onSave={submit}
         onCancel={closeEditor}
       />
@@ -186,6 +202,7 @@
             problem={row.problem}
             status={statuses[row.key]}
             {projects}
+            {providers}
             {now}
             running={running[row.key] ?? false}
             onToggle={(enabled) => setEnabled(row.key, enabled)}

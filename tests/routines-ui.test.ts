@@ -18,7 +18,16 @@ const retro = {
   note: "kept by a newer version",
 };
 
-function harness(settings: Record<string, unknown>, statuses: RoutineStatus[] = []) {
+const PROVIDERS = {
+  default: "claude",
+  providers: [
+    { key: "claude", label: "Claude", auto_approve: true },
+    { key: "codex", label: "Codex", auto_approve: true },
+    { key: "chat", label: "Claude Chat", auto_approve: false },
+  ],
+};
+
+function harness(settings: Record<string, unknown>, statuses: RoutineStatus[] = [], providers: () => Promise<unknown> = async () => PROVIDERS) {
   const replaced: Record<string, unknown>[] = [];
   const call = vi.fn(async (method: string, params?: unknown) => {
     if (method === "routines.status") return { routines: statuses };
@@ -29,7 +38,11 @@ function harness(settings: Record<string, unknown>, statuses: RoutineStatus[] = 
     host: {
       call: call as RoutinesUiContext["host"]["call"],
       rpc: {
-        call: (async () => ({ projects: [{ id: "p1", name: "App", path: "/work/app", hidden: false }, { id: "p2", name: "Docs", path: "/work/docs", hidden: false }] })) as RoutinesUiContext["host"]["rpc"]["call"],
+        call: (async (method: string) => {
+          if (method === "projects.list") return { projects: [{ id: "p1", name: "App", path: "/work/app", hidden: false }, { id: "p2", name: "Docs", path: "/work/docs", hidden: false }] };
+          if (method === "sessions.providers") return await providers();
+          throw new Error(`unexpected ${method}`);
+        }) as RoutinesUiContext["host"]["rpc"]["call"],
       },
       settings: {
         get: (async () => settings) as RoutinesUiContext["host"]["settings"]["get"],
@@ -55,6 +68,14 @@ function field<T extends HTMLElement = HTMLInputElement>(label: string): T {
   if (!found) throw new Error(`no field ${label}`);
   return found as T;
 }
+
+function checkbox(label: string): HTMLInputElement {
+  const found = [...document.querySelectorAll("label")].find((candidate) => candidate.textContent?.trim() === label)?.querySelector("input");
+  if (!found) throw new Error(`no checkbox ${label}`);
+  return found;
+}
+
+const options = (select: HTMLSelectElement) => [...select.options].map((option) => option.textContent);
 
 function type(element: HTMLInputElement | HTMLTextAreaElement, text: string): void {
   element.value = text;
@@ -234,5 +255,98 @@ describe("Routines pane", () => {
     expect(escape.defaultPrevented).toBe(true);
     expect(document.querySelector("form")).toBeNull();
     expect(replaced).toEqual([]);
+  });
+
+  it("starts a session by default, with PlaneAI's providers and the task form's switches", async () => {
+    const { context, replaced } = harness({ routines: [] });
+    await open(context);
+    button("New routine").click();
+    flushSync();
+    type(field("Name"), "Triage");
+    type(field("Title"), "Triage {{date}}");
+    expect(checkbox("Start session immediately").checked).toBe(true);
+    expect(options(field<HTMLSelectElement>("Provider"))).toEqual(["Default (Claude)", "Claude", "Codex", "Claude Chat"]);
+    expect(field<HTMLSelectElement>("Provider").value).toBe("");
+    expect([checkbox("Worktree").checked, checkbox("Auto-approve").checked]).toEqual([true, true]);
+    expect(document.getElementById("session-hint")?.textContent).toBe("The branch, session name and prompt follow PlaneAI's task templates.");
+
+    choose(field<HTMLSelectElement>("Provider"), "chat");
+    expect([checkbox("Auto-approve").checked, checkbox("Auto-approve").disabled]).toEqual([false, true]);
+    expect(document.getElementById("auto-approve-hint")?.textContent).toBe("Claude Chat does not support auto-approve.");
+    checkbox("Worktree").click();
+    flushSync();
+    button("Create routine").click();
+    await settle();
+    expect((replaced[0].routines as { task: { start: unknown } }[])[0].task.start).toEqual({ enabled: true, provider: "chat", use_worktree: false, auto_approve: false });
+  });
+
+  it("restores auto-approve when switching back to a provider that supports it", async () => {
+    await open(harness({ routines: [] }).context);
+    button("New routine").click();
+    flushSync();
+    choose(field<HTMLSelectElement>("Provider"), "chat");
+    choose(field<HTMLSelectElement>("Provider"), "codex");
+    expect([checkbox("Auto-approve").checked, checkbox("Auto-approve").disabled]).toEqual([true, false]);
+    expect(document.getElementById("auto-approve-hint")).toBeNull();
+  });
+
+  it("saves a routine that only creates its task, hiding the session fields", async () => {
+    const { context, replaced } = harness({ routines: [retro] });
+    await open(context);
+    button("Edit Weekly retro").click();
+    flushSync();
+    checkbox("Start session immediately").click();
+    flushSync();
+    expect(document.querySelector('[data-field="provider"]')).toBeNull();
+    button("Save").click();
+    await settle();
+    expect((replaced[0].routines as { task: { start: unknown } }[])[0].task.start).toEqual({ enabled: false, provider: null, use_worktree: true, auto_approve: true });
+  });
+
+  it("keeps a provider PlaneAI no longer offers, and still saves without the provider list", async () => {
+    const gone = { ...retro, task: { ...retro.task, start: { enabled: true, provider: "old", use_worktree: true, auto_approve: true } } };
+    const { context, replaced } = harness({ routines: [gone] }, [], async () => {
+      throw new Error("unknown host method sessions.providers");
+    });
+    await open(context);
+    expect(document.querySelector('[aria-labelledby="routine-r1"] .session')?.textContent).toBe("Starts with old");
+    button("Edit Weekly retro").click();
+    flushSync();
+    expect(options(field<HTMLSelectElement>("Provider"))).toEqual(["Providers unavailable"]);
+    expect(field<HTMLSelectElement>("Provider").disabled).toBe(true);
+    expect(document.getElementById("providers-problem")?.textContent?.trim()).toBe("Could not load providers: unknown host method sessions.providers Retry");
+    button("Save").click();
+    await settle();
+    expect(replaced).toEqual([
+      {
+        routines: [
+          {
+            id: "r1",
+            name: "Weekly retro",
+            enabled: true,
+            project_path: "/work/app",
+            schedule: { kind: "weekly", time: "09:00", weekdays: ["mon", "tue", "wed", "thu", "fri"] },
+            task: { title: "Retro {{date}}", description: "", priority: 0, tags: [], start: { enabled: true, provider: "old", use_worktree: true, auto_approve: true } },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("marks a saved provider that PlaneAI no longer offers", async () => {
+    const gone = { ...retro, task: { ...retro.task, start: { enabled: true, provider: "old", use_worktree: true, auto_approve: true } } };
+    await open(harness({ routines: [gone] }).context);
+    button("Edit Weekly retro").click();
+    flushSync();
+    expect(options(field<HTMLSelectElement>("Provider"))).toEqual(["Default (Claude)", "old (unavailable)", "Claude", "Codex", "Claude Chat"]);
+    expect(field<HTMLSelectElement>("Provider").value).toBe("old");
+  });
+
+  it("says in the list which routines start a session, and with which provider", async () => {
+    const codex = { ...retro, id: "r2", name: "Review", task: { ...retro.task, start: { enabled: true, provider: "codex", use_worktree: true, auto_approve: true } } };
+    const off = { ...retro, id: "r3", name: "Plan", task: { ...retro.task, start: { enabled: false, provider: null, use_worktree: true, auto_approve: true } } };
+    await open(harness({ routines: [retro, codex, off] }).context);
+    const session = (id: string) => document.querySelector(`[aria-labelledby="routine-${id}"] .session`)?.textContent ?? null;
+    expect([session("r1"), session("r2"), session("r3")]).toEqual(["Starts with Claude", "Starts with Codex", null]);
   });
 });

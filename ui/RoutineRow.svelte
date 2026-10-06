@@ -4,6 +4,7 @@
   import { describe } from "../src/schedule";
   import { absolute, relative } from "./format";
   import type { Project, RoutineStatus } from "./host";
+  import { providerName, type SessionProviders } from "./providers";
 
   let {
     key,
@@ -12,6 +13,7 @@
     problem,
     status,
     projects,
+    providers,
     now,
     running,
     onToggle,
@@ -25,6 +27,7 @@
     problem: string | null;
     status: RoutineStatus | undefined;
     projects: Project[] | null;
+    providers: SessionProviders | null;
     now: Date;
     running: boolean;
     onToggle: (enabled: boolean) => void;
@@ -81,6 +84,12 @@
             <dd class="muted">…</dd>
           {/if}
         </div>
+        {#if routine.task.start.enabled}
+          <div>
+            <dt>Session</dt>
+            <dd class="session">Starts with {providerName(providers, routine.task.start.provider)}</dd>
+          </div>
+        {/if}
         {#if status?.last_task_key}
           <div>
             <dt>Last task</dt>
