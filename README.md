@@ -3,7 +3,8 @@
 A PlaneAI plugin that creates tasks on a schedule.
 A routine names a project, a schedule and a task template, such as a retro every Friday at 09:00 or an invoice reminder on the first of the month.
 
-Open **Routines** from the **Routines** button at the top of PlaneAI's sidebar, under **New session** and **New project**, or from Cmd+K, to manage them.
+Open **Routines** from the **Routines** button at the top of PlaneAI's sidebar, under **New session** and **New project**, or from Cmd+K, to manage them in a dialog over your workspace.
+Escape closes the routine being edited, then the dialog.
 The button shows when the next enabled routine runs: `09:00` for today, `Mon 09:00` within the week, `Oct 20 09:00` further out, and nothing when no routine is enabled.
 It refreshes every 30 seconds, and in a sidebar narrower than 220px it shows only its icon, like the buttons beside it.
 Each routine has a name, an on/off switch, a project, a schedule, the task's title, description, priority and tags, and whether PlaneAI starts a session on the task.
@@ -13,6 +14,7 @@ The list shows when each routine runs next, whether it starts a session, the las
 
 - A PlaneAI build whose plugin host offers `host.tasks.create` for top-level tasks, with its `start` option, and the `sessions.start` capability.
   A PlaneAI that does not know `sessions.start` refuses to install the plugin.
+- A PlaneAI build that offers the `dialog` UI placement; an older one refuses the manifest.
 
 The plugin asks for the `settings`, `projects.read`, `tasks.create` and `sessions.start` capabilities.
 
@@ -78,7 +80,7 @@ Tests run in the `America/Toronto` time zone, set in `vite.config.ts`, so their 
 | `src/schedule.ts` | Schedules compiled to cron, their descriptions, next runs and latest due occurrence. |
 | `src/template.ts` | Placeholders for task titles and descriptions. |
 | `src/state.ts` | The sidecar's run state file, replaced atomically. |
-| `ui/` | The Svelte 5 main pane and sidebar button, each built into one self-contained ESM bundle, `ui/routines.js` and `ui/sidebar.js`. |
+| `ui/` | The Svelte 5 dialog and sidebar button, each built into one self-contained ESM bundle, `ui/routines.js` and `ui/sidebar.js`. |
 | `scripts/smoke.mjs` | Plays PlaneAI over stdin and stdout against the staged binary. |
 
 ## Release
