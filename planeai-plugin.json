@@ -25,7 +25,7 @@
     {
       "id": "routines",
       "label": "Routines",
-      "placement": "main-pane",
+      "placement": "dialog",
       "entrypoint": "ui/routines.js"
     },
     {

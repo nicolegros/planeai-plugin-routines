@@ -116,7 +116,7 @@ describe("the sidebar button", () => {
     expect(changeListeners.size).toBe(0);
   });
 
-  it("opens the Routines main pane", async () => {
+  it("opens the Routines dialog", async () => {
     const { context, open } = harness(async () => ({ routines: [] }));
     await render(context);
     button().click();
@@ -125,6 +125,11 @@ describe("the sidebar button", () => {
 });
 
 describe("the manifest", () => {
+  it("contributes the manager as a host dialog", () => {
+    const manifest = JSON.parse(readFileSync("planeai-plugin.json", "utf8"));
+    expect(manifest.ui_contributions).toContainEqual({ id: "routines", label: "Routines", placement: "dialog", entrypoint: "ui/routines.js" });
+  });
+
   it("contributes the sidebar button above the sidebar", () => {
     const manifest = JSON.parse(readFileSync("planeai-plugin.json", "utf8"));
     expect(manifest.ui_contributions).toContainEqual({ id: "open", label: "Routines", placement: "sidebar.header", entrypoint: "ui/sidebar.js", order: 0 });

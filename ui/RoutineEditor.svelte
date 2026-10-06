@@ -85,7 +85,7 @@
 
   function onKeydown(event: KeyboardEvent): void {
     if (event.key !== "Escape") return;
-    // Claimed, so PlaneAI does not close the whole pane.
+    // Claimed, so PlaneAI does not close the whole dialog.
     event.preventDefault();
     event.stopPropagation();
     onCancel();
@@ -98,7 +98,7 @@
   {/if}
 {/snippet}
 
-<!-- Escape is caught here, below the window where PlaneAI listens for it to close the pane. -->
+<!-- Escape is caught here, below the window where PlaneAI listens for it to close the dialog. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <form class="editor" aria-labelledby="editor-title" onsubmit={submit} onkeydown={onKeydown} novalidate>
   <h2 id="editor-title">{isNew ? "New routine" : `Edit ${draft.name.trim() || "routine"}`}</h2>

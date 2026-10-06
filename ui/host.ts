@@ -6,7 +6,7 @@ export interface Project {
   path: string;
 }
 
-/** The slice of PlaneAI's local plugin UI bridge the routines pane uses. */
+/** The slice of PlaneAI's local plugin UI bridge the Routines dialog uses. */
 export interface RoutinesUiContext {
   host: {
     /** This plugin's sidecar. */
