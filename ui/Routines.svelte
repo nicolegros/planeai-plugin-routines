@@ -1,0 +1,216 @@
+<script lang="ts">
+  import { onMount, tick } from "svelte";
+  import { checkRoutine, parseRoutines, routineKey, type Routine } from "../src/routine";
+  import { newDraft, toDraft, toEntry, type Draft } from "./draft";
+  import type { CreatedTask, Project, RoutineStatus, RoutinesUiContext } from "./host";
+  import RoutineEditor from "./RoutineEditor.svelte";
+  import RoutineRow from "./RoutineRow.svelte";
+
+  let { context }: { context: RoutinesUiContext } = $props();
+
+  const REFRESH_MS = 30_000;
+
+  /** The whole settings document; keys other than `routines` belong to PlaneAI or other features and are written back untouched. */
+  let settings = $state<Record<string, unknown> | null>(null);
+  let loadFailure = $state<string | null>(null);
+  let projects = $state<Project[] | null>(null);
+  let projectsFailure = $state<string | null>(null);
+  let statuses = $state<Record<string, RoutineStatus>>({});
+  let statusFailure = $state<string | null>(null);
+  let now = $state(new Date());
+  let editing = $state<{ draft: Draft; isNew: boolean } | null>(null);
+  let running = $state<Record<string, boolean>>({});
+  /** Saves run one after another, so each writes the document the previous one left. */
+  let saving: Promise<unknown> = Promise.resolve();
+
+  const entries = $derived<unknown[]>(Array.isArray(settings?.routines) ? settings.routines : []);
+  const parsed = $derived(parseRoutines(settings));
+  const byId = $derived(new Map(parsed.routines.map((routine) => [routine.id, routine])));
+  const rows = $derived(
+    entries.map((entry, index) => {
+      const key = routineKey(entry, index);
+      return { key, entry, routine: parsed.problems.has(key) ? undefined : byId.get(key), problem: parsed.problems.get(key) ?? null };
+    }),
+  );
+
+  const describeError = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
+
+  async function load(): Promise<void> {
+    loadFailure = null;
+    try {
+      settings = await context.host.settings.get();
+    } catch (reason) {
+      loadFailure = `Could not load routines: ${describeError(reason)}`;
+    }
+  }
+
+  async function loadProjects(): Promise<void> {
+    projectsFailure = null;
+    try {
+      projects = (await context.host.rpc.call<{ projects: Project[] }>("projects.list")).projects;
+    } catch (reason) {
+      projectsFailure = `Could not load projects: ${describeError(reason)}`;
+    }
+  }
+
+  async function refreshStatus(): Promise<void> {
+    now = new Date();
+    try {
+      const result = await context.host.call<{ routines: RoutineStatus[] }>("routines.status");
+      statuses = Object.fromEntries(result.routines.map((status) => [status.id, status]));
+      statusFailure = null;
+    } catch (reason) {
+      statusFailure = `Run times are unavailable: ${describeError(reason)}`;
+    }
+  }
+
+  onMount(() => {
+    void load();
+    void loadProjects();
+    void refreshStatus();
+    const timer = setInterval(() => void refreshStatus(), REFRESH_MS);
+    return () => clearInterval(timer);
+  });
+
+  function save(next: unknown[]): void {
+    const document = { ...settings, routines: next };
+    settings = document;
+    saving = saving.then(async () => {
+      try {
+        await context.host.settings.replace(document);
+      } catch (reason) {
+        context.host.data.notify(`Could not save routines: ${describeError(reason)}`, "error");
+        await load();
+        return;
+      }
+      await refreshStatus();
+    });
+  }
+
+  async function focus(selector: string): Promise<void> {
+    await tick();
+    document.querySelector<HTMLElement>(selector)?.focus();
+  }
+
+  function create(): void {
+    editing = { draft: newDraft(crypto.randomUUID(), projects?.[0]?.path ?? ""), isNew: true };
+  }
+
+  function edit(routine: Routine): void {
+    editing = { draft: toDraft(routine), isNew: false };
+  }
+
+  function closeEditor(): void {
+    const id = editing && !editing.isNew ? editing.draft.id : null;
+    editing = null;
+    void focus(id ? `[data-edit="${CSS.escape(id)}"]` : "[data-new-routine]");
+  }
+
+  function submit(draft: Draft): void {
+    const entry = toEntry(draft);
+    if (!("routine" in checkRoutine(entry))) return;
+    const index = entries.findIndex((candidate, position) => routineKey(candidate, position) === draft.id);
+    save(index === -1 ? [...entries, entry] : entries.map((candidate, position) => (position === index ? entry : candidate)));
+    editing = null;
+    void focus(`[data-edit="${CSS.escape(draft.id)}"]`);
+  }
+
+  function setEnabled(key: string, enabled: boolean): void {
+    save(entries.map((entry, index) => (routineKey(entry, index) === key && entry && typeof entry === "object" ? { ...entry, enabled } : entry)));
+  }
+
+  function remove(key: string): void {
+    save(entries.filter((entry, index) => routineKey(entry, index) !== key));
+    void focus("[data-new-routine]");
+  }
+
+  async function runNow(routine: Routine): Promise<void> {
+    running = { ...running, [routine.id]: true };
+    try {
+      const { task } = await context.host.call<{ task: CreatedTask }>("routines.runNow", { id: routine.id });
+      context.host.data.notify(`Created ${task.key}`, "success");
+    } catch (reason) {
+      context.host.data.notify(`Could not run ${routine.name}: ${describeError(reason)}`, "error");
+    } finally {
+      running = { ...running, [routine.id]: false };
+    }
+    await refreshStatus();
+  }
+</script>
+
+<div class="page">
+  <main class="content" aria-labelledby="routines-title">
+    <header class="header">
+      <div class="heading">
+        <h1 id="routines-title">Routines</h1>
+        <p class="lede">Create a task on a schedule, such as a weekly retro or a monthly report.</p>
+      </div>
+      {#if settings && !editing}
+        <button type="button" class="primary" data-new-routine onclick={create}>New routine</button>
+      {/if}
+    </header>
+
+    {#if loadFailure}
+      <div class="notice error" role="alert">
+        <span>{loadFailure}</span>
+        <button type="button" onclick={() => void load()}>Retry</button>
+      </div>
+    {:else if !settings}
+      <p class="muted" role="status">Loading routines…</p>
+    {:else if editing}
+      <RoutineEditor
+        initial={editing.draft}
+        isNew={editing.isNew}
+        {projects}
+        {projectsFailure}
+        onRetryProjects={() => void loadProjects()}
+        onSave={submit}
+        onCancel={closeEditor}
+      />
+    {:else if rows.length === 0}
+      <section class="empty">
+        <h2>No routines yet</h2>
+        <p class="muted">A routine adds a task to a project at the times you choose, even after PlaneAI was closed.</p>
+        <button type="button" class="primary" onclick={create}>Create your first routine</button>
+      </section>
+    {:else}
+      {#if statusFailure}
+        <p class="notice warning" role="status">{statusFailure}</p>
+      {/if}
+      <ul class="list" aria-label="Routines">
+        {#each rows as row (row.key)}
+          <RoutineRow
+            key={row.key}
+            entry={row.entry}
+            routine={row.routine}
+            problem={row.problem}
+            status={statuses[row.key]}
+            {projects}
+            {now}
+            running={running[row.key] ?? false}
+            onToggle={(enabled) => setEnabled(row.key, enabled)}
+            onRun={() => row.routine && void runNow(row.routine)}
+            onEdit={() => row.routine && edit(row.routine)}
+            onDelete={() => remove(row.key)}
+          />
+        {/each}
+      </ul>
+    {/if}
+  </main>
+</div>
+
+<style>
+  .page { height: 100%; overflow-y: auto; scrollbar-gutter: stable; }
+  .content { display: grid; gap: var(--planeai-space-5); max-width: 860px; margin: 0 auto; padding: var(--planeai-space-6) var(--planeai-space-5); }
+  .header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--planeai-space-3); }
+  .heading { display: grid; gap: var(--planeai-space-1); min-width: 0; }
+  .lede, .muted { color: var(--planeai-text-muted); }
+  .list { display: grid; gap: var(--planeai-space-2); margin: 0; padding: 0; list-style: none; }
+  .empty { display: grid; justify-items: center; gap: var(--planeai-space-2); padding: var(--planeai-space-6) var(--planeai-space-4); border: 1px dashed var(--planeai-border); border-radius: var(--planeai-radius); text-align: center; }
+  .empty button { margin-top: var(--planeai-space-2); }
+  .notice { display: flex; align-items: center; justify-content: space-between; gap: var(--planeai-space-3); padding: var(--planeai-space-2) var(--planeai-space-3); border: 1px solid var(--planeai-border); border-radius: var(--planeai-radius); }
+  .notice.error { color: var(--planeai-danger); }
+  .notice.warning { color: var(--planeai-warning); }
+  :global(button.primary) { border-color: var(--planeai-accent); background: var(--planeai-accent); color: var(--planeai-on-accent); }
+  :global(button.primary:hover:not(:disabled)) { background: var(--planeai-accent); filter: brightness(1.08); }
+</style>

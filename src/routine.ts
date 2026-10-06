@@ -57,7 +57,8 @@ function failer(problems: Problem[]) {
   };
 }
 
-function parseSchedule(value: unknown, problems: Problem[]): Schedule | null {
+/** The schedule part alone, for a preview while the rest of a routine is still being written. */
+export function parseSchedule(value: unknown, problems: Problem[]): Schedule | null {
   const fail = failer(problems);
   if (!isObject(value)) return fail("schedule", "Schedule must be weekly, monthly or cron.");
   const time = () => (typeof value.time === "string" && TIME.test(value.time) ? value.time : fail("time", "Time must be HH:MM, from 00:00 to 23:59."));
