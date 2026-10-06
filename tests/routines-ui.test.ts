@@ -96,7 +96,6 @@ describe("Routines pane", () => {
   });
 
   it("creates a routine through the form, writing the whole document and keeping unknown keys", async () => {
-    vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000001");
     const { context, replaced } = harness({ tick_interval_ms: 45_000, routines: [retro] });
     await open(context);
     button("New routine").click();
@@ -113,13 +112,15 @@ describe("Routines pane", () => {
     type(field("Tags"), " release, docs ,release,");
     button("Create routine").click();
     await settle();
+    const id = (replaced[0].routines as { id: string }[])[1].id;
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(replaced).toEqual([
       {
         tick_interval_ms: 45_000,
         routines: [
           retro,
           {
-            id: "00000000-0000-4000-8000-000000000001",
+            id,
             name: "Release notes",
             enabled: true,
             project_path: "/work/docs",

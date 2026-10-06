@@ -247,18 +247,21 @@
   .field { display: grid; gap: var(--planeai-space-1); align-content: start; min-width: 0; }
   .label { color: var(--planeai-text-subtle); font-size: 12px; }
   input, select, textarea { width: 100%; min-width: 0; }
+  /* WebKit draws a time input taller than a text input or select; one height keeps the rows aligned. */
+  input, select { height: 34px; }
   textarea { resize: vertical; }
+  ::placeholder { color: var(--planeai-text-subtle); opacity: 1; }
   .mono, code { font-family: var(--planeai-font-mono); }
   [aria-invalid="true"] { border-color: var(--planeai-danger); }
   .hint, .muted { color: var(--planeai-text-muted); font-size: 12px; }
   .field-problem { color: var(--planeai-danger); font-size: 12px; }
   .hint code { margin-right: var(--planeai-space-1); padding: 0 3px; border-radius: 4px; background: var(--planeai-surface-raised); }
   .days { display: flex; flex-wrap: wrap; gap: var(--planeai-space-2); }
-  .chip { min-width: 52px; border-radius: 999px; }
-  .chip[aria-pressed="true"] { border-color: var(--planeai-accent); background: var(--planeai-accent-subtle); color: var(--planeai-text); }
+  .chip { min-width: 52px; border-radius: 999px; background: var(--planeai-main); }
+  .chip[aria-pressed="true"], .chip[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--planeai-accent); background: var(--planeai-accent); color: var(--planeai-on-accent); }
   .link { min-height: 0; padding: 0; border: 0; background: none; color: var(--planeai-accent); text-decoration: underline; }
   .link:hover:not(:disabled) { background: none; }
-  .preview { display: grid; gap: var(--planeai-space-2); padding: var(--planeai-space-3); border-radius: var(--planeai-radius); background: var(--planeai-main); }
+  .preview { display: grid; gap: var(--planeai-space-2); padding: var(--planeai-space-3); border: 1px solid var(--planeai-border); border-radius: var(--planeai-radius); background: var(--planeai-main); }
   .runs { display: flex; flex-wrap: wrap; gap: var(--planeai-space-1) var(--planeai-space-4); margin: 0; padding: 0; list-style: none; }
   .next-title { overflow-wrap: anywhere; }
   .footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--planeai-space-3); }

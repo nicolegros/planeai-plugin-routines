@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { checkRoutine, parseRoutines, routineKey, type Routine } from "../src/routine";
-  import { newDraft, toDraft, toEntry, type Draft } from "./draft";
+  import { newDraft, newId, toDraft, toEntry, type Draft } from "./draft";
   import type { CreatedTask, Project, RoutineStatus, RoutinesUiContext } from "./host";
   import RoutineEditor from "./RoutineEditor.svelte";
   import RoutineRow from "./RoutineRow.svelte";
@@ -93,7 +93,7 @@
   }
 
   function create(): void {
-    editing = { draft: newDraft(crypto.randomUUID(), projects?.[0]?.path ?? ""), isNew: true };
+    editing = { draft: newDraft(newId(), projects?.[0]?.path ?? ""), isNew: true };
   }
 
   function edit(routine: Routine): void {
