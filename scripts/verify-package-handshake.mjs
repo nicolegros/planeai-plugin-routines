@@ -19,6 +19,9 @@ const binaryPath = path.join(packageRoot, entrypoint);
 if (!fs.existsSync(binaryPath)) {
   throw new Error(`staged binary does not exist: ${binaryPath}`);
 }
+for (const { id, entrypoint: ui } of manifest.ui_contributions ?? []) {
+  if (!fs.existsSync(path.join(packageRoot, ui))) throw new Error(`UI contribution ${id} has no staged ${ui}; add it to the Makefile's UI_ENTRIES`);
+}
 
 const expected = {
   plugin_id: manifest.id,
