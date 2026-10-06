@@ -135,15 +135,6 @@ describe("RoutinesPlugin", () => {
     expect(state().r1).toMatchObject({ last_task_key: "APP-1", last_error: null });
   });
 
-  it("explains that an older PlaneAI cannot create tasks", async () => {
-    const { tick, at, world, state } = harness();
-    await tick();
-    at("2026-10-06T13:00:10Z");
-    world.failure = new RpcError(-32601, "unknown host method host.tasks.create");
-    await tick();
-    expect(state().r1.last_error).toBe("This PlaneAI version cannot create tasks from plugins. Update PlaneAI.");
-  });
-
   it("never fires a disabled routine, and re-enabling it does not fire a stale occurrence", async () => {
     const { tick, at, world, created, state } = harness();
     await tick();

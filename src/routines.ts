@@ -70,7 +70,6 @@ function taskRequest(routine: Routine, at: Date, operation_id: string): TaskRequ
 const occurrenceId = (routine: Routine, at: Date) => `routine:${routine.id}:${at.toISOString().replace(".000Z", "Z")}`;
 
 function failure(error: unknown): string {
-  if (error instanceof RpcError && error.code === METHOD_NOT_FOUND) return "This PlaneAI version cannot create tasks from plugins. Update PlaneAI.";
   return error instanceof Error ? error.message : String(error);
 }
 
