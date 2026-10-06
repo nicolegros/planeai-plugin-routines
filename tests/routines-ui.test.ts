@@ -89,7 +89,7 @@ function choose(element: HTMLSelectElement, value: string): void {
   flushSync();
 }
 
-describe("Routines pane", () => {
+describe("Routines dialog", () => {
   let app: ReturnType<typeof mount> | undefined;
   const open = async (context: RoutinesUiContext) => {
     app = mount(Routines, { target: document.body, props: { context } });
@@ -108,9 +108,16 @@ describe("Routines pane", () => {
     vi.restoreAllMocks();
   });
 
+  it("leaves the title to PlaneAI's dialog and introduces the feature in one line", async () => {
+    await open(harness({ routines: [retro] }).context);
+    expect(document.querySelector("h1")).toBeNull();
+    expect(document.querySelector(".lede")?.textContent).toBe("Create a task on a schedule, such as a weekly retro or a monthly report.");
+  });
+
   it("offers one call to action when there are no routines", async () => {
     await open(harness({}).context);
     expect(document.querySelector(".empty h2")?.textContent).toBe("No routines yet");
+    expect([...document.querySelectorAll("button")].map((candidate) => candidate.textContent?.trim())).toEqual(["Create your first routine"]);
     button("Create your first routine").click();
     flushSync();
     expect(document.activeElement).toBe(field("Name"));
@@ -161,7 +168,7 @@ describe("Routines pane", () => {
 
   it("keeps Save disabled with the reasons until the routine is valid, and previews the next runs", async () => {
     await open(harness({ routines: [] }).context);
-    button("New routine").click();
+    button("Create your first routine").click();
     flushSync();
     expect(button("Create routine").disabled).toBe(true);
     expect(document.querySelector(".reasons")?.textContent).toBe("Enter a name. Enter a task title.");
@@ -244,7 +251,16 @@ describe("Routines pane", () => {
     expect(notify).toHaveBeenLastCalledWith("Could not run Weekly retro: project was not found or is hidden", "error");
   });
 
-  it("cancels the editor with Escape without letting PlaneAI close the pane", async () => {
+  it("returns focus to the empty state's call to action when the first routine is cancelled", async () => {
+    await open(harness({}).context);
+    button("Create your first routine").click();
+    flushSync();
+    button("Cancel").click();
+    await settle();
+    expect(document.activeElement).toBe(button("Create your first routine"));
+  });
+
+  it("cancels the editor with Escape without letting PlaneAI close the dialog", async () => {
     const { context, replaced } = harness({ routines: [retro] });
     await open(context);
     button("Edit Weekly retro").click();
@@ -260,7 +276,7 @@ describe("Routines pane", () => {
   it("starts a session by default, with PlaneAI's providers and the task form's switches", async () => {
     const { context, replaced } = harness({ routines: [] });
     await open(context);
-    button("New routine").click();
+    button("Create your first routine").click();
     flushSync();
     type(field("Name"), "Triage");
     type(field("Title"), "Triage {{date}}");
@@ -282,7 +298,7 @@ describe("Routines pane", () => {
 
   it("restores auto-approve when switching back to a provider that supports it", async () => {
     await open(harness({ routines: [] }).context);
-    button("New routine").click();
+    button("Create your first routine").click();
     flushSync();
     choose(field<HTMLSelectElement>("Provider"), "chat");
     choose(field<HTMLSelectElement>("Provider"), "codex");

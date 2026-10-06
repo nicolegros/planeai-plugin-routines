@@ -151,76 +151,72 @@
   }
 </script>
 
-<div class="page">
-  <main class="content" aria-labelledby="routines-title">
-    <header class="header">
-      <div class="heading">
-        <h1 id="routines-title">Routines</h1>
-        <p class="lede">Create a task on a schedule, such as a weekly retro or a monthly report.</p>
-      </div>
-      {#if settings && !editing}
-        <button type="button" class="primary" data-new-routine onclick={create}>New routine</button>
-      {/if}
-    </header>
-
-    {#if loadFailure}
-      <div class="notice error" role="alert">
-        <span>{loadFailure}</span>
-        <button type="button" onclick={() => void load()}>Retry</button>
-      </div>
-    {:else if !settings}
-      <p class="muted" role="status">Loading routines…</p>
-    {:else if editing}
-      <RoutineEditor
-        initial={editing.draft}
-        isNew={editing.isNew}
-        {projects}
-        {projectsFailure}
-        onRetryProjects={() => void loadProjects()}
-        {providers}
-        {providersFailure}
-        onRetryProviders={() => void loadProviders()}
-        onSave={submit}
-        onCancel={closeEditor}
-      />
-    {:else if rows.length === 0}
-      <section class="empty">
-        <h2>No routines yet</h2>
-        <p class="muted">A routine adds a task to a project at the times you choose, even after PlaneAI was closed.</p>
-        <button type="button" class="primary" onclick={create}>Create your first routine</button>
-      </section>
-    {:else}
-      {#if statusFailure}
-        <p class="notice warning" role="status">{statusFailure}</p>
-      {/if}
-      <ul class="list" aria-label="Routines">
-        {#each rows as row (row.key)}
-          <RoutineRow
-            key={row.key}
-            entry={row.entry}
-            routine={row.routine}
-            problem={row.problem}
-            status={statuses[row.key]}
-            {projects}
-            {providers}
-            {now}
-            running={running[row.key] ?? false}
-            onToggle={(enabled) => setEnabled(row.key, enabled)}
-            onRun={() => row.routine && void runNow(row.routine)}
-            onEdit={() => row.routine && edit(row.routine)}
-            onDelete={() => remove(row.key)}
-          />
-        {/each}
-      </ul>
+<!-- PlaneAI's dialog titles this "Routines" and scrolls it, so it neither repeats the title nor scrolls itself. -->
+<main class="content" aria-label="Routines">
+  <header class="header">
+    <p class="lede">Create a task on a schedule, such as a weekly retro or a monthly report.</p>
+    {#if rows.length > 0 && !editing}
+      <button type="button" class="primary" data-new-routine onclick={create}>New routine</button>
     {/if}
-  </main>
-</div>
+  </header>
+
+  {#if loadFailure}
+    <div class="notice error" role="alert">
+      <span>{loadFailure}</span>
+      <button type="button" onclick={() => void load()}>Retry</button>
+    </div>
+  {:else if !settings}
+    <p class="muted" role="status">Loading routines…</p>
+  {:else if editing}
+    <RoutineEditor
+      initial={editing.draft}
+      isNew={editing.isNew}
+      {projects}
+      {projectsFailure}
+      onRetryProjects={() => void loadProjects()}
+      {providers}
+      {providersFailure}
+      onRetryProviders={() => void loadProviders()}
+      onSave={submit}
+      onCancel={closeEditor}
+    />
+  {:else if rows.length === 0}
+    <section class="empty">
+      <h2>No routines yet</h2>
+      <p class="muted">A routine adds a task to a project at the times you choose, even after PlaneAI was closed.</p>
+      <button type="button" class="primary" data-new-routine onclick={create}>Create your first routine</button>
+    </section>
+  {:else}
+    {#if statusFailure}
+      <p class="notice warning" role="status">{statusFailure}</p>
+    {/if}
+    <ul class="list" aria-label="Routines">
+      {#each rows as row (row.key)}
+        <RoutineRow
+          key={row.key}
+          entry={row.entry}
+          routine={row.routine}
+          problem={row.problem}
+          status={statuses[row.key]}
+          {projects}
+          {providers}
+          {now}
+          running={running[row.key] ?? false}
+          onToggle={(enabled) => setEnabled(row.key, enabled)}
+          onRun={() => row.routine && void runNow(row.routine)}
+          onEdit={() => row.routine && edit(row.routine)}
+          onDelete={() => remove(row.key)}
+        />
+      {/each}
+    </ul>
+  {/if}
+</main>
 
 <style>
-  .page { height: 100%; overflow-y: auto; scrollbar-gutter: stable; }
-  .content { display: grid; gap: var(--planeai-space-5); max-width: 860px; margin: 0 auto; padding: var(--planeai-space-6) var(--planeai-space-5); }
-  .header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--planeai-space-3); }
-  .heading { display: grid; gap: var(--planeai-space-1); min-width: 0; }
+  /* Inset like the dialog title; the header keeps the button's height so opening the editor does not shift it. */
+  .content { display: grid; gap: var(--planeai-space-4); padding: 0 var(--planeai-space-5) var(--planeai-space-5); }
+  .header { display: flex; align-items: center; justify-content: space-between; gap: var(--planeai-space-3); min-height: 32px; }
+  .lede { min-width: 0; }
   .lede, .muted { color: var(--planeai-text-muted); }
   .list { display: grid; gap: var(--planeai-space-2); margin: 0; padding: 0; list-style: none; }
   .empty { display: grid; justify-items: center; gap: var(--planeai-space-2); padding: var(--planeai-space-6) var(--planeai-space-4); border: 1px dashed var(--planeai-border); border-radius: var(--planeai-radius); text-align: center; }
