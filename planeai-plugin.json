@@ -27,6 +27,13 @@
       "label": "Routines",
       "placement": "main-pane",
       "entrypoint": "ui/routines.js"
+    },
+    {
+      "id": "open",
+      "label": "Routines",
+      "placement": "sidebar.header",
+      "entrypoint": "ui/sidebar.js",
+      "order": 0
     }
   ]
 }

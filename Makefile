@@ -22,7 +22,7 @@ BINARY ?= $(PLUGIN)
 
 .PHONY: build-ui build-sidecar check test package verify-package smoke conformance clean
 
-UI_ENTRIES := routines
+UI_ENTRIES := routines sidebar
 
 build-ui:
 	rm -rf build/ui

@@ -3,7 +3,9 @@
 A PlaneAI plugin that creates tasks on a schedule.
 A routine names a project, a schedule and a task template, such as a retro every Friday at 09:00 or an invoice reminder on the first of the month.
 
-Open **Routines** from Cmd+K to manage them.
+Open **Routines** from the **Routines** button at the top of PlaneAI's sidebar, under **New session** and **New project**, or from Cmd+K, to manage them.
+The button shows when the next enabled routine runs: `09:00` for today, `Mon 09:00` within the week, `Oct 20 09:00` further out, and nothing when no routine is enabled.
+It refreshes every 30 seconds.
 Each routine has a name, an on/off switch, a project, a schedule, the task's title, description, priority and tags, and whether PlaneAI starts a session on the task.
 The list shows when each routine runs next, whether it starts a session, the last task it created, and any error, and **Run now** creates a task immediately.
 
@@ -44,7 +46,7 @@ What the plugin remembers between checks (when each routine last ran, its last t
 ## Install
 
 Download the archive for your platform from the repository's Releases page, extract it, then in PlaneAI open **Preferences → Plugins → Install local package** and select the extracted `planeai-plugin-routines` directory.
-Enable it, then open **Routines** from Cmd+K.
+Enable it, then open **Routines** from the sidebar button or Cmd+K.
 
 To update, install the new package the same way, over the installed one.
 Do not remove the plugin first: removing it deletes its settings, including every routine.
@@ -76,7 +78,7 @@ Tests run in the `America/Toronto` time zone, set in `vite.config.ts`, so their 
 | `src/schedule.ts` | Schedules compiled to cron, their descriptions, next runs and latest due occurrence. |
 | `src/template.ts` | Placeholders for task titles and descriptions. |
 | `src/state.ts` | The sidecar's run state file, replaced atomically. |
-| `ui/` | The Svelte 5 main pane, built into one self-contained ESM bundle, `ui/routines.js`. |
+| `ui/` | The Svelte 5 main pane and sidebar button, each built into one self-contained ESM bundle, `ui/routines.js` and `ui/sidebar.js`. |
 | `scripts/smoke.mjs` | Plays PlaneAI over stdin and stdout against the staged binary. |
 
 ## Release

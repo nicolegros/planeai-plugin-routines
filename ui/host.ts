@@ -22,3 +22,13 @@ export interface RoutinesUiContext {
 }
 
 export type { RoutineStatus, TaskCreation };
+
+/** The slice of the bridge the sidebar button uses. */
+export interface SidebarUiContext {
+  host: {
+    settings: { get<T extends Record<string, unknown>>(): Promise<T> };
+    navigation: { open(pluginId: string, contributionId: string): void };
+    /** Absent on hosts that predate change notifications. */
+    data: { onChanged?(listener: () => void): () => void };
+  };
+}
