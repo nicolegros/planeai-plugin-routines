@@ -1,0 +1,30 @@
+{
+  "name": "planeai-plugin-routines",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:ui": "make build-ui",
+    "check": "tsc --noEmit && svelte-check --fail-on-warnings",
+    "test": "vitest run"
+  },
+  "packageManager": "pnpm@10.28.2",
+  "dependencies": {
+    "croner": "10.0.1"
+  },
+  "devDependencies": {
+    "@auto-it/conventional-commits": "11.3.6",
+    "@auto-it/git-tag": "11.3.6",
+    "@auto-it/upload-assets": "11.3.6",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/node": "26.6.2",
+    "@typescript/typescript6": "6.0.2",
+    "auto": "11.3.6",
+    "jsdom": "30.1.1",
+    "svelte": "5.57.1",
+    "svelte-check": "4.7.6",
+    "typescript": "7.0.2",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
+  }
+}
