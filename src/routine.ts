@@ -13,11 +13,23 @@ export type Schedule =
 export const PRIORITIES = [0, 1, 2, 3] as const;
 export type Priority = (typeof PRIORITIES)[number];
 
+/** The session PlaneAI starts on the created task; `provider: null` is PlaneAI's default provider. */
+export interface SessionStart {
+  enabled: boolean;
+  provider: string | null;
+  use_worktree: boolean;
+  auto_approve: boolean;
+}
+
+/** PlaneAI's task form defaults: start a session, in a worktree, auto-approved, with the default provider. */
+export const DEFAULT_START: SessionStart = { enabled: true, provider: null, use_worktree: true, auto_approve: true };
+
 export interface TaskTemplate {
   title: string;
   description: string;
   priority: Priority;
   tags: string[];
+  start: SessionStart;
 }
 
 export interface Routine {
@@ -29,7 +41,7 @@ export interface Routine {
   task: TaskTemplate;
 }
 
-export type Field = "routine" | "id" | "name" | "enabled" | "project" | "schedule" | "time" | "weekdays" | "day" | "cron" | "task" | "title" | "description" | "priority" | "tags";
+export type Field = "routine" | "id" | "name" | "enabled" | "project" | "schedule" | "time" | "weekdays" | "day" | "cron" | "task" | "title" | "description" | "priority" | "tags" | "start" | "provider";
 
 export interface Problem {
   field: Field;
@@ -88,15 +100,31 @@ export function parseSchedule(value: unknown, problems: Problem[]): Schedule | n
   }
 }
 
+function parseStart(value: unknown, problems: Problem[]): SessionStart | null {
+  const fail = failer(problems);
+  if (value === undefined) return DEFAULT_START;
+  if (!isObject(value)) return fail("start", "Session start must be an object.");
+  const { enabled = DEFAULT_START.enabled, provider = null, use_worktree = DEFAULT_START.use_worktree, auto_approve = DEFAULT_START.auto_approve } = value;
+  const flag = (flagValue: unknown, message: string) => (typeof flagValue === "boolean" ? flagValue : fail("start", message));
+  const on = flag(enabled, "Start session must be true or false.");
+  // Boxed, since null is a valid provider and also what a failure stands in with.
+  const chosen = provider === null || isText(provider) ? { provider } : fail("provider", "Provider must be a provider key, or null for PlaneAI's default.");
+  const worktree = flag(use_worktree, "Worktree must be true or false.");
+  const approve = flag(auto_approve, "Auto-approve must be true or false.");
+  if (on === null || chosen === null || worktree === null || approve === null) return null;
+  return { enabled: on, provider: chosen.provider, use_worktree: worktree, auto_approve: approve };
+}
+
 function parseTask(value: unknown, problems: Problem[]): TaskTemplate | null {
   const fail = failer(problems);
   if (!isObject(value)) return fail("task", "Task must be an object.");
-  const { title: rawTitle, description: rawDescription = "", priority: rawPriority = 0, tags: rawTags = [] } = value;
+  const { title: rawTitle, description: rawDescription = "", priority: rawPriority = 0, tags: rawTags = [], start: rawStart } = value;
   const title = isText(rawTitle) ? rawTitle : fail("title", "Enter a task title.");
   const description = typeof rawDescription === "string" ? rawDescription : fail("description", "Description must be text.");
   const priority = isPriority(rawPriority) ? rawPriority : fail("priority", "Priority must be 0, 1, 2 or 3.");
   const tags = Array.isArray(rawTags) && rawTags.every((tag) => typeof tag === "string") ? normalizeTags(rawTags) : fail("tags", "Tags must be a list of text.");
-  return title === null || description === null || priority === null || tags === null ? null : { title, description, priority, tags };
+  const start = parseStart(rawStart, problems);
+  return title === null || description === null || priority === null || tags === null || start === null ? null : { title, description, priority, tags, start };
 }
 
 /** One routine from the settings document: the routine, or every problem found, each with its field. */

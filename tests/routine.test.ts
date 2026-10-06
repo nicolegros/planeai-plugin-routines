@@ -20,7 +20,13 @@ describe("parseRoutines", () => {
         enabled: true,
         project_path: "/work/app",
         schedule: { kind: "weekly", time: "09:00", weekdays: ["mon", "fri"] },
-        task: { title: "Retro {{date}}", description: "Notes", priority: 2, tags: ["ritual", "team"] },
+        task: {
+          title: "Retro {{date}}",
+          description: "Notes",
+          priority: 2,
+          tags: ["ritual", "team"],
+          start: { enabled: true, provider: null, use_worktree: true, auto_approve: true },
+        },
       },
     ]);
     expect([...problems]).toEqual([]);
@@ -29,7 +35,20 @@ describe("parseRoutines", () => {
   it("defaults the optional task fields", () => {
     const { routines } = parseRoutines({ routines: [{ ...valid, schedule: { kind: "monthly", time: "23:59", day: 31 }, task: { title: "Pay" } }] });
     expect(routines[0].schedule).toEqual({ kind: "monthly", time: "23:59", day: 31 });
-    expect(routines[0].task).toEqual({ title: "Pay", description: "", priority: 0, tags: [] });
+    expect(routines[0].task).toEqual({
+      title: "Pay",
+      description: "",
+      priority: 0,
+      tags: [],
+      start: { enabled: true, provider: null, use_worktree: true, auto_approve: true },
+    });
+  });
+
+  it("reads a session start, defaulting each missing field like PlaneAI's task form", () => {
+    const start = (value: unknown) => parseRoutines({ routines: [{ ...valid, task: { ...valid.task, start: value } }] }).routines[0].task.start;
+    expect(start({ enabled: false, provider: "codex", use_worktree: false, auto_approve: false })).toEqual({ enabled: false, provider: "codex", use_worktree: false, auto_approve: false });
+    expect(start({ provider: "claude" })).toEqual({ enabled: true, provider: "claude", use_worktree: true, auto_approve: true });
+    expect(start({ enabled: false, provider: null })).toEqual({ enabled: false, provider: null, use_worktree: true, auto_approve: true });
   });
 
   it("treats a missing or malformed list as no routines", () => {
@@ -53,6 +72,11 @@ describe("parseRoutines", () => {
     ["description", { ...valid, task: { ...valid.task, description: 3 } }, "Description must be text."],
     ["priority", { ...valid, task: { ...valid.task, priority: 4 } }, "Priority must be 0, 1, 2 or 3."],
     ["tags", { ...valid, task: { ...valid.task, tags: "a,b" } }, "Tags must be a list of text."],
+    ["session start", { ...valid, task: { ...valid.task, start: true } }, "Session start must be an object."],
+    ["start switch", { ...valid, task: { ...valid.task, start: { enabled: "yes" } } }, "Start session must be true or false."],
+    ["provider", { ...valid, task: { ...valid.task, start: { provider: " " } } }, "Provider must be a provider key, or null for PlaneAI's default."],
+    ["worktree", { ...valid, task: { ...valid.task, start: { use_worktree: 1 } } }, "Worktree must be true or false."],
+    ["auto-approve", { ...valid, task: { ...valid.task, start: { auto_approve: null } } }, "Auto-approve must be true or false."],
   ])("reports a malformed %s for that routine only", (_, broken, problem) => {
     const other = { ...valid, id: "r2" };
     const { routines, problems } = parseRoutines({ routines: [{ ...broken, id: "bad" }, other] });

@@ -125,7 +125,13 @@ describe("Routines pane", () => {
             enabled: true,
             project_path: "/work/docs",
             schedule: { kind: "weekly", time: "07:30", weekdays: ["mon", "fri"] },
-            task: { title: "Notes for week {{week}}", description: "Collect {{month}} changes", priority: 3, tags: ["release", "docs"] },
+            task: {
+              title: "Notes for week {{week}}",
+              description: "Collect {{month}} changes",
+              priority: 3,
+              tags: ["release", "docs"],
+              start: { enabled: true, provider: null, use_worktree: true, auto_approve: true },
+            },
           },
         ],
       },
@@ -154,12 +160,13 @@ describe("Routines pane", () => {
   });
 
   it("toggles, edits and deletes a routine", async () => {
-    const { context, replaced } = harness({ routines: [retro, { ...retro, id: "r2", name: "Other" }] });
+    const other = { ...retro, id: "r2", name: "Other", task: { ...retro.task, start: { enabled: false, provider: "codex", use_worktree: false, auto_approve: true } } };
+    const { context, replaced } = harness({ routines: [retro, other] });
     await open(context);
     const toggle = document.querySelector<HTMLInputElement>('[aria-label="Enable Weekly retro"]')!;
     toggle.click();
     await settle();
-    expect(replaced.at(-1)).toEqual({ routines: [{ ...retro, enabled: false }, { ...retro, id: "r2", name: "Other" }] });
+    expect(replaced.at(-1)).toEqual({ routines: [{ ...retro, enabled: false }, other] });
     expect(document.querySelector('[aria-labelledby="routine-r1"]')?.textContent).toContain("Paused");
 
     button("Edit Other").click();
@@ -173,7 +180,7 @@ describe("Routines pane", () => {
       enabled: true,
       project_path: "/work/app",
       schedule: { kind: "weekly", time: "09:00", weekdays: ["mon", "tue", "wed", "thu", "fri"] },
-      task: { title: "Retro {{date}}", description: "", priority: 0, tags: [] },
+      task: { title: "Retro {{date}}", description: "", priority: 0, tags: [], start: { enabled: false, provider: "codex", use_worktree: false, auto_approve: true } },
     });
     expect(document.activeElement).toBe(button("Edit Renamed"));
 

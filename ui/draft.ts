@@ -1,4 +1,4 @@
-import { normalizeTags, WEEKDAYS, type Priority, type Routine, type Weekday } from "../src/routine";
+import { DEFAULT_START, normalizeTags, WEEKDAYS, type Priority, type Routine, type SessionStart, type Weekday } from "../src/routine";
 
 /** The editor's schedule choices, each mapped onto one of the three schedule kinds. */
 export const PRESETS = [
@@ -31,6 +31,7 @@ export interface Draft {
   description: string;
   priority: Priority;
   tags: string;
+  start: SessionStart;
 }
 
 export function newDraft(id: string, project_path: string): Draft {
@@ -48,6 +49,7 @@ export function newDraft(id: string, project_path: string): Draft {
     description: "",
     priority: 0,
     tags: "",
+    start: { ...DEFAULT_START },
   };
 }
 
@@ -73,6 +75,7 @@ export function toDraft(routine: Routine): Draft {
     description: task.description,
     priority: task.priority,
     tags: task.tags.join(", "),
+    start: { ...task.start },
   };
 }
 
@@ -104,6 +107,7 @@ export function toEntry(draft: Draft): Record<string, unknown> {
       description: draft.description,
       priority: draft.priority,
       tags: normalizeTags(draft.tags.split(",")),
+      start: { ...draft.start },
     },
   };
 }
