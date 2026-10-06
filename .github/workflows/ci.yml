@@ -24,3 +24,4 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: make test
       - run: make verify-package
+      - run: make smoke
