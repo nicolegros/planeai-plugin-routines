@@ -9,6 +9,8 @@ The button shows when the next enabled routine runs: `09:00` for today, `Mon 09:
 It refreshes every 30 seconds, and in a sidebar narrower than 220px it shows only its icon, like the buttons beside it.
 Each routine has a name, an on/off switch, a project, a schedule, the task's title, description, priority and tags, and whether PlaneAI starts a session on the task.
 The list shows when each routine runs next, whether it starts a session, the last task it created, and any error, and **Run now** creates a task immediately.
+The dialog re-reads the routines and their run times after each check, and each change is saved over the routines PlaneAI has at that moment, so a change made elsewhere is kept.
+A save that fails leaves the editor open with your changes, to save again or cancel.
 
 ## Requirements
 
@@ -61,6 +63,7 @@ Prerequisites: Node 22+, pnpm 10, and Bun 1.4.
 
 ```bash
 pnpm install
+make lint            # oxlint, and oxfmt --check (make fmt formats)
 make test            # tsc, svelte-check, vitest
 make package         # stage dist/planeai-plugin-routines for this platform
 make verify-package  # handshake check against the staged binary
@@ -89,4 +92,6 @@ Tests run in the `America/Toronto` time zone, set in `vite.config.ts`, so their 
 ## Release
 
 Conventional commits on `main` drive `auto` versioning.
-The release workflow cross-compiles the sidecar with Bun for `macos-arm64`, `linux-x64` and `windows-x64`, and publishes one archive per platform, each declaring only its own entrypoint.
+The release workflow builds the sidecar with Bun on a native `macos-arm64`, `linux-x64` and `windows-x64` runner, injects the version into the manifest and the handshake, and runs the tests, `make verify-package` and `make smoke` against each platform's own binary.
+Only when every platform passes does it tag the commit and publish one archive per platform, each declaring only its own entrypoint, after approval in the `release` environment.
+CI runs the same checks on the three platforms for every pull request.

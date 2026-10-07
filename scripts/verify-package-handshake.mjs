@@ -26,6 +26,14 @@ for (const { id, entrypoint: ui } of manifest.ui_contributions ?? []) {
     );
 }
 
+// A release build passes its tag, so a version that was not injected fails here instead of shipping.
+const expectedVersion = process.env.EXPECTED_VERSION?.replace(/^v/, "");
+if (expectedVersion && manifest.version !== expectedVersion) {
+  throw new Error(
+    `staged manifest declares version ${manifest.version}, expected ${expectedVersion}`,
+  );
+}
+
 const expected = {
   plugin_id: manifest.id,
   plugin_name: manifest.name,

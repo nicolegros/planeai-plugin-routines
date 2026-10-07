@@ -10,7 +10,21 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            runner: macos-latest
+          - platform: linux-x64
+            runner: ubuntu-24.04
+          - platform: windows-x64
+            runner: windows-latest
+    name: validate (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -21,8 +35,12 @@ jobs:
           bun-version: 1.4.2
       - name: Install pnpm
         run: npm install -g pnpm@10.28.2
+      - name: Install make
+        if: runner.os == 'Windows'
+        run: choco install make --no-progress -y
       - run: pnpm install --frozen-lockfile
       - run: make lint
+        if: runner.os == 'Linux'
       - run: make test
       - run: make verify-package
       - run: make smoke

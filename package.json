@@ -16,8 +16,6 @@
   },
   "devDependencies": {
     "@auto-it/conventional-commits": "11.3.6",
-    "@auto-it/git-tag": "11.3.6",
-    "@auto-it/upload-assets": "11.3.6",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/node": "26.6.2",
     "@typescript/typescript6": "6.0.2",
