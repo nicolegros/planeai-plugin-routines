@@ -272,6 +272,38 @@ describe("RoutinesPlugin", () => {
     expect(state().r1).toMatchObject({ last_task_key: "APP-1", last_error: null });
   });
 
+  it.each([
+    [
+      -32003,
+      "plugin capability is not granted",
+      "PlaneAI did not grant Routines a capability it needs (plugin capability is not granted). Reinstall the plugin.",
+    ],
+    [
+      -32601,
+      "host method not found",
+      "This PlaneAI cannot create tasks for Routines (host method not found). Update PlaneAI.",
+    ],
+  ])(
+    "skips an occurrence PlaneAI answers with %i, which no retry can fix",
+    async (code, message, recorded) => {
+      const { tick, at, world, created, state } = harness();
+      await tick();
+      at("2026-10-06T13:00:10Z");
+      world.failure = new RpcError(code, message);
+      let attempts = 0;
+      world.beforeCreate = () => void attempts++;
+      await expect(tick()).resolves.toEqual({ created: 0 });
+      at("2026-10-06T13:00:40Z");
+      await tick();
+      expect(attempts).toBe(1);
+      expect(created).toEqual([]);
+      expect(state().r1).toMatchObject({
+        last_fired: "2026-10-06T13:00:00.000Z",
+        last_error: recorded,
+      });
+    },
+  );
+
   it("never fires a disabled routine, and re-enabling it does not fire a stale occurrence", async () => {
     const { tick, at, world, created, state } = harness();
     await tick();
