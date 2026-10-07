@@ -37,9 +37,11 @@ The plugin asks for the `settings`, `projects.read`, `tasks.create` and `session
 - **No surprise tasks.** A new, re-enabled or rescheduled routine starts counting from that moment, so it never creates a task for a time that already passed.
 - **Idempotency.** Each task is created with an operation id made of the routine and its due time, and PlaneAI creates at most one task per operation id.
   A crash or a failed attempt retries the same operation, so it never creates a duplicate.
-  A request PlaneAI refuses (JSON-RPC `-32602`, such as a hidden project) cannot succeed on retry: the routine shows the error, skips that occurrence and fires the next one.
   **Run now** uses its own operation id and does not move the schedule.
-- **Errors.** A failed creation, such as a project that was removed or hidden, is shown on the routine and retried on the next check.
+- **Errors.** The last error shows on the routine until its next task is created.
+  A failure that may pass on its own is retried on the next check with the same operation id: PlaneAI temporarily unavailable (JSON-RPC `-32004`, such as a provider plugin that is not running yet right after launch), a host error (`-32603`) or a cancelled request.
+  A refusal that only a change outside the plugin can fix skips that occurrence, and the routine fires the next one: invalid params (`-32602`, such as a hidden or removed project), a capability PlaneAI did not grant (`-32003`, reinstall the plugin) or a PlaneAI without `host.tasks.create` (`-32601`, update PlaneAI).
+  Once the cause is fixed, for example the project unhidden, the next occurrence succeeds; use **Run now** to make up for the skipped one.
   A routine whose settings are malformed shows why and never stops the others.
 
 The routines live in PlaneAI's settings for the plugin.
