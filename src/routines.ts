@@ -237,13 +237,17 @@ export class RoutinesPlugin {
     };
   }
 
+  /** `action_id` names the user's click: retrying it reuses the operation id, so PlaneAI creates one task. */
   private async runNow(params: unknown, signal?: AbortSignal): Promise<TaskCreation> {
-    const id =
-      typeof params === "object" && params !== null
-        ? (params as Record<string, unknown>).id
-        : undefined;
+    const { id, action_id } =
+      typeof params === "object" && params !== null ? (params as Record<string, unknown>) : {};
     if (typeof id !== "string" || !id)
       throw new RpcError(INVALID_PARAMS, "id must be a nonempty string");
+    if (typeof action_id !== "string" || !action_id || action_id.length > 64)
+      throw new RpcError(
+        INVALID_PARAMS,
+        "action_id must be a nonempty string of at most 64 characters",
+      );
     const { routines, problems } = parseRoutines(await this.host.settings(signal));
     const problem = problems.get(id);
     if (problem) throw new RpcError(INVALID_PARAMS, problem);
@@ -252,7 +256,7 @@ export class RoutinesPlugin {
     const now = this.now();
     try {
       return await this.host.createTask(
-        taskRequest(routine, now, `routine:${id}:manual:${now.toISOString()}`),
+        taskRequest(routine, now, `routine:${id}:manual:${action_id}`),
         signal,
       );
     } catch (error) {

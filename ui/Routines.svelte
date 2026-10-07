@@ -137,10 +137,16 @@
     void focus("[data-new-routine]");
   }
 
+  /** The action id of each routine's Run now that has not succeeded yet: running it again retries that action, so PlaneAI creates its task once. */
+  const unfinishedRuns = new Map<string, string>();
+
   async function runNow(routine: Routine): Promise<void> {
     running = { ...running, [routine.id]: true };
+    const action_id = unfinishedRuns.get(routine.id) ?? newId();
+    unfinishedRuns.set(routine.id, action_id);
     try {
-      const { task, session } = await context.host.call<TaskCreation>("routines.runNow", { id: routine.id });
+      const { task, session } = await context.host.call<TaskCreation>("routines.runNow", { id: routine.id, action_id });
+      unfinishedRuns.delete(routine.id);
       context.host.data.notify(session === "starting" ? `Created ${task.key}. Its session is starting.` : `Created ${task.key}`, "success");
     } catch (reason) {
       context.host.data.notify(`Could not run ${routine.name}: ${describeError(reason)}`, "error");
