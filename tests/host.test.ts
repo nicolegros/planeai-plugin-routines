@@ -47,9 +47,9 @@ describe("hostOver", () => {
   });
 
   it.each([
-    [null, "PlaneAI returned malformed a task"],
-    [[], "PlaneAI returned malformed a task"],
-    [{ task: "APP-1" }, "PlaneAI returned malformed a task"],
+    [null, "PlaneAI returned a malformed task"],
+    [[], "PlaneAI returned a malformed task"],
+    [{ task: "APP-1" }, "PlaneAI returned a malformed task"],
     [{ task: { title: "Retro" } }, "PlaneAI returned a task without a key"],
   ])("refuses the malformed reply %j as a host error", async (reply, message) => {
     await expect(answering(reply).host.createTask(request)).rejects.toMatchObject({
