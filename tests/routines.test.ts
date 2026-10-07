@@ -307,7 +307,7 @@ describe("RoutinesPlugin", () => {
   it("logs each occurrence it fires, retries or skips to stderr, with the routine and operation ids", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const { tick, at, world } = harness([
-      retro(),
+      retro({ task: { ...retro().task, start: { enabled: false } } }),
       retro({ id: "r2", task: { ...retro().task, start: { enabled: true, provider: "codex" } } }),
     ]);
     await tick();

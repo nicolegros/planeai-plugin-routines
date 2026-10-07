@@ -167,28 +167,42 @@ export class RoutinesPlugin {
     }
     const due = latestOccurrence(routine.schedule, new Date(state.last_fired), now);
     if (!due) return { state, created: false };
+    const operation = occurrenceId(routine, due);
+    // Stdout carries the protocol; diagnostics go to stderr, which PlaneAI keeps in the plugin's log.
+    const log = (outcome: string) =>
+      console.error(`routine ${routine.id}: ${operation} ${outcome}`);
     try {
       const { task, session, session_error } = await this.host.createTask(
-        taskRequest(routine, due, occurrenceId(routine, due)),
+        taskRequest(routine, due, operation),
         signal,
       );
-      const last_error =
+      const sessionFailure =
         session === "failed"
-          ? `${task.key} was created, but its session could not start: ${session_error ?? "unknown error"}`
+          ? `but its session could not start: ${session_error ?? "unknown error"}`
           : null;
+      log(
+        `created ${task.key}${sessionFailure ? `, ${sessionFailure}` : session === "starting" ? ", its session is starting" : ""}`,
+      );
       return {
-        state: { fingerprint, last_fired: due.toISOString(), last_task_key: task.key, last_error },
+        state: {
+          fingerprint,
+          last_fired: due.toISOString(),
+          last_task_key: task.key,
+          last_error: sessionFailure ? `${task.key} was created, ${sessionFailure}` : null,
+        },
         created: true,
       };
     } catch (error) {
       // PlaneAI refused this occurrence for good: retrying it cannot succeed, the next one may.
       const refusal = error instanceof RpcError ? FINAL_REFUSALS[error.code] : undefined;
       if (refusal) {
+        log(`skipped: ${failure(error)}`);
         return {
           state: { ...state, last_fired: due.toISOString(), last_error: refusal(failure(error)) },
           created: false,
         };
       }
+      log(`failed, retrying on the next tick: ${failure(error)}`);
       // last_fired stays, so the next tick retries the same operation id.
       return { state: { ...state, last_error: failure(error) }, created: false };
     }
