@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RpcError } from "../src/rpc";
 import {
   RoutinesPlugin,
@@ -303,6 +303,55 @@ describe("RoutinesPlugin", () => {
       });
     },
   );
+
+  it("logs each occurrence it fires, retries or skips to stderr, with the routine and operation ids", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { tick, at, world } = harness([
+      retro(),
+      retro({ id: "r2", task: { ...retro().task, start: { enabled: true, provider: "codex" } } }),
+    ]);
+    await tick();
+    at("2026-10-06T13:00:10Z");
+    world.failure = new RpcError(-32603, "database is locked");
+    await tick();
+    world.failure = null;
+    at("2026-10-06T13:00:40Z");
+    await tick();
+    at("2026-10-07T13:00:10Z");
+    world.beforeCreate = () => {
+      world.failure = new RpcError(-32602, "project was not found or is hidden");
+    };
+    await tick();
+    expect(logged.mock.calls.map(([line]) => line)).toEqual([
+      "routine r1: routine:r1:2026-10-06T13:00:00Z failed, retrying on the next tick: database is locked",
+      "routine r2: routine:r2:2026-10-06T13:00:00Z failed, retrying on the next tick: database is locked",
+      "routine r1: routine:r1:2026-10-06T13:00:00Z created APP-1",
+      "routine r2: routine:r2:2026-10-06T13:00:00Z created APP-2, its session is starting",
+      "routine r1: routine:r1:2026-10-07T13:00:00Z skipped: project was not found or is hidden",
+      "routine r2: routine:r2:2026-10-07T13:00:00Z skipped: project was not found or is hidden",
+    ]);
+    logged.mockRestore();
+  });
+
+  it("logs a created task whose session PlaneAI could not start", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { tick, at, world, statePath } = harness([
+      retro({ task: { ...retro().task, start: { enabled: true, provider: "codex" } } }),
+    ]);
+    await tick();
+    const beforeFiring = readFileSync(statePath, "utf8");
+    at("2026-10-06T13:00:10Z");
+    await tick();
+    writeFileSync(statePath, beforeFiring);
+    world.replayed = { session: "failed", session_error: "Unknown provider: codex" };
+    at("2026-10-06T13:00:40Z");
+    await tick();
+    expect(logged.mock.calls.map(([line]) => line)).toEqual([
+      "routine r1: routine:r1:2026-10-06T13:00:00Z created APP-1, its session is starting",
+      "routine r1: routine:r1:2026-10-06T13:00:00Z created APP-1, but its session could not start: Unknown provider: codex",
+    ]);
+    logged.mockRestore();
+  });
 
   it("never fires a disabled routine, and re-enabling it does not fire a stale occurrence", async () => {
     const { tick, at, world, created, state } = harness();
