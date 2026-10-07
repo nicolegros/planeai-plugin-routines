@@ -7,7 +7,8 @@ import path from "node:path";
 // Plays PlaneAI against the staged sidecar: a routine whose last run was two days ago is due,
 // so one tick must create exactly one task for today's occurrence, ask for its session, and record it.
 const [packageRoot, platform] = process.argv.slice(2);
-if (!packageRoot || !platform) throw new Error("usage: node scripts/smoke.mjs <package-root> <platform>");
+if (!packageRoot || !platform)
+  throw new Error("usage: node scripts/smoke.mjs <package-root> <platform>");
 
 const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, "planeai-plugin.json"), "utf8"));
 const binaryPath = path.join(packageRoot, manifest.backend_entrypoints[platform]);
@@ -27,7 +28,11 @@ const settings = {
       name: "Smoke",
       enabled: true,
       project_path: "/work/app",
-      schedule: { kind: "weekly", time: "00:00", weekdays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] },
+      schedule: {
+        kind: "weekly",
+        time: "00:00",
+        weekdays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      },
       task: {
         title: "Smoke {{date}}",
         description: "Created by {{routine}}",
@@ -41,13 +46,25 @@ const settings = {
 const statePath = path.join(dataDir, "routines-state.json");
 fs.writeFileSync(
   statePath,
-  JSON.stringify({ smoke: { fingerprint: "0 0 * * *", last_fired: new Date(today.getTime() - 2 * 86_400_000).toISOString(), last_task_key: null, last_error: null } }),
+  JSON.stringify({
+    smoke: {
+      fingerprint: "0 0 * * *",
+      last_fired: new Date(today.getTime() - 2 * 86_400_000).toISOString(),
+      last_task_key: null,
+      last_error: null,
+    },
+  }),
 );
 
 const child = spawn(binaryPath, [], {
   stdio: ["pipe", "pipe", "pipe"],
   // UTC makes today's midnight the expected occurrence.
-  env: { ...process.env, TZ: "UTC", PLANEAI_PLUGIN_DATA_DIR: dataDir, PLANEAI_PLUGIN_SECRETS_DIR: path.join(stateRoot, "secrets") },
+  env: {
+    ...process.env,
+    TZ: "UTC",
+    PLANEAI_PLUGIN_DATA_DIR: dataDir,
+    PLANEAI_PLUGIN_SECRETS_DIR: path.join(stateRoot, "secrets"),
+  },
 });
 let stderr = "";
 child.stderr.on("data", (chunk) => (stderr += chunk));
@@ -69,7 +86,10 @@ child.stdout.on("data", (chunk) => {
 const receive = () =>
   new Promise((resolve, reject) => {
     if (frames.length) return resolve(frames.shift());
-    const timer = setTimeout(() => reject(new Error(`timed out waiting for the sidecar\n${stderr}`)), 5_000);
+    const timer = setTimeout(
+      () => reject(new Error(`timed out waiting for the sidecar\n${stderr}`)),
+      5_000,
+    );
     waiting.push((frame) => {
       clearTimeout(timer);
       resolve(frame);
@@ -79,7 +99,15 @@ const send = (frame) => child.stdin.write(`${JSON.stringify(frame)}\n`);
 
 /** A host request, serving the sidecar's callbacks with `callbacks` until the response arrives. */
 async function request(id, method, callbacks = {}) {
-  send({ jsonrpc: "2.0", id, method, params: method === "plugin.handshake" ? { host_api_version: manifest.host_api_version, host_capabilities: manifest.capabilities } : null });
+  send({
+    jsonrpc: "2.0",
+    id,
+    method,
+    params:
+      method === "plugin.handshake"
+        ? { host_api_version: manifest.host_api_version, host_capabilities: manifest.capabilities }
+        : null,
+  });
   const served = [];
   for (;;) {
     const frame = await receive();
@@ -102,7 +130,9 @@ try {
 
   const due = await request(2, "routines.tick", {
     ...settingsCallback,
-    "host.tasks.create": () => ({ result: { task: { key: "SMK-1", title: "Smoke" }, session: "starting" } }),
+    "host.tasks.create": () => ({
+      result: { task: { key: "SMK-1", title: "Smoke" }, session: "starting" },
+    }),
   });
   assert.deepEqual(due.response.result, { created: 1 });
   const occurrence = today.toISOString();
@@ -117,18 +147,28 @@ try {
     start: { provider: "claude", use_worktree: true, auto_approve: false },
   });
   assert.deepEqual(JSON.parse(fs.readFileSync(statePath, "utf8")), {
-    smoke: { fingerprint: "0 0 * * *", last_fired: occurrence, last_task_key: "SMK-1", last_error: null },
+    smoke: {
+      fingerprint: "0 0 * * *",
+      last_fired: occurrence,
+      last_task_key: "SMK-1",
+      last_error: null,
+    },
   });
 
   const idle = await request(3, "routines.tick", settingsCallback);
   assert.deepEqual(idle.response.result, { created: 0 });
-  assert.deepEqual(idle.served.map((frame) => frame.method), ["host.settings.get"]);
+  assert.deepEqual(
+    idle.served.map((frame) => frame.method),
+    ["host.settings.get"],
+  );
 
   const shutdown = await request(4, "plugin.shutdown");
   assert.deepEqual(shutdown.response.result, { stopping: true });
   const code = await new Promise((resolve) => child.on("exit", resolve));
   assert.equal(code, 0, "the sidecar exits after shutdown");
-  console.log(`smoke: one due routine created ${create.params.operation_id} with a ${create.params.start.provider} session and recorded SMK-1 for ${platform}`);
+  console.log(
+    `smoke: one due routine created ${create.params.operation_id} with a ${create.params.start.provider} session and recorded SMK-1 for ${platform}`,
+  );
 } catch (error) {
   child.kill();
   console.error(error.message);

@@ -3,19 +3,14 @@
   "id": "routines",
   "name": "Routines",
   "version": "0.0.0",
-  "host_api_version": "planeai.plugin-host.v1",
+  "host_api_version": "planeai.plugin-host.v4",
   "source_kind": "local",
   "backend_entrypoints": {
     "macos-arm64": "bin/macos-arm64/planeai-plugin-routines",
     "linux-x64": "bin/linux-x64/planeai-plugin-routines",
     "windows-x64": "bin/windows-x64/planeai-plugin-routines.exe"
   },
-  "capabilities": [
-    "settings",
-    "projects.read",
-    "tasks.create",
-    "sessions.start"
-  ],
+  "capabilities": ["settings", "projects.read", "tasks.create", "sessions.start"],
   "background_service": {
     "method": "routines.tick",
     "interval_setting": "tick_interval_ms",

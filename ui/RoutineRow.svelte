@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import type { Routine } from "../src/routine";
-  import { describe } from "../src/schedule";
+  import { describe, HORIZON_DAYS } from "../src/schedule";
   import { absolute, relative } from "./format";
   import type { Project, RoutineStatus } from "./host";
   import { providerName, type SessionProviders } from "./providers";
@@ -38,6 +38,7 @@
 
   let confirming = $state(false);
   let confirmButton = $state<HTMLButtonElement>();
+  let deleteButton = $state<HTMLButtonElement>();
 
   const rawName = $derived(entry && typeof entry === "object" && typeof (entry as Record<string, unknown>).name === "string" ? ((entry as Record<string, unknown>).name as string) : "");
   const name = $derived(routine?.name ?? (rawName.trim() || "Untitled routine"));
@@ -51,6 +52,13 @@
     confirming = true;
     await tick();
     confirmButton?.focus();
+  }
+
+  /** Back to Delete, so focus does not fall to the page where Escape would close the whole dialog. */
+  async function cancelDelete(): Promise<void> {
+    confirming = false;
+    await tick();
+    deleteButton?.focus();
   }
 </script>
 
@@ -79,7 +87,7 @@
           {:else if nextRun}
             <dd><time datetime={nextRun.toISOString()} title={nextRun.toLocaleString()}>{relative(nextRun, now)}</time> <span class="muted">· {absolute(nextRun)}</span></dd>
           {:else if status}
-            <dd class="muted">None in the next 400 days</dd>
+            <dd class="muted">None in the next {HORIZON_DAYS} days</dd>
           {:else}
             <dd class="muted">…</dd>
           {/if}
@@ -118,13 +126,13 @@
       <div class="confirm" role="group" aria-label={`Delete ${name}?`}>
         <span class="confirm-label">Delete?</span>
         <button type="button" class="danger" bind:this={confirmButton} onclick={onDelete}>Delete</button>
-        <button type="button" onclick={() => (confirming = false)}>Cancel</button>
+        <button type="button" onclick={() => void cancelDelete()}>Cancel</button>
       </div>
     {:else}
       <div class="actions">
         <button type="button" disabled={!routine || running} onclick={onRun} aria-label={`Run ${name} now`}>{running ? "Running…" : "Run now"}</button>
         <button type="button" disabled={!routine} data-edit={key} onclick={onEdit} aria-label={`Edit ${name}`}>Edit</button>
-        <button type="button" onclick={() => void askToDelete()} aria-label={`Delete ${name}`}>Delete</button>
+        <button type="button" bind:this={deleteButton} onclick={() => void askToDelete()} aria-label={`Delete ${name}`}>Delete</button>
       </div>
     {/if}
   </div>

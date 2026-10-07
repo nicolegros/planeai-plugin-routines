@@ -9,8 +9,8 @@ export type Schedule =
   | { kind: "monthly"; time: string; day: number }
   | { kind: "cron"; expression: string };
 
-/** PlaneAI's task priorities: a higher number is more urgent, 0 is none. */
-export const PRIORITIES = [0, 1, 2, 3] as const;
+/** PlaneAI's task priorities, the scale its Jira plugin writes: 0 is none, 1 lowest to 5 highest. */
+export const PRIORITIES = [0, 1, 2, 3, 4, 5] as const;
 export type Priority = (typeof PRIORITIES)[number];
 
 /** The session PlaneAI starts on the created task; `provider: null` is PlaneAI's default provider. */
@@ -22,7 +22,12 @@ export interface SessionStart {
 }
 
 /** PlaneAI's task form defaults: start a session, in a worktree, auto-approved, with the default provider. */
-export const DEFAULT_START: SessionStart = { enabled: true, provider: null, use_worktree: true, auto_approve: true };
+export const DEFAULT_START: SessionStart = {
+  enabled: true,
+  provider: null,
+  use_worktree: true,
+  auto_approve: true,
+};
 
 export interface TaskTemplate {
   title: string;
@@ -41,7 +46,24 @@ export interface Routine {
   task: TaskTemplate;
 }
 
-export type Field = "routine" | "id" | "name" | "enabled" | "project" | "schedule" | "time" | "weekdays" | "day" | "cron" | "task" | "title" | "description" | "priority" | "tags" | "start" | "provider";
+export type Field =
+  | "routine"
+  | "id"
+  | "name"
+  | "enabled"
+  | "project"
+  | "schedule"
+  | "time"
+  | "weekdays"
+  | "day"
+  | "cron"
+  | "task"
+  | "title"
+  | "description"
+  | "priority"
+  | "tags"
+  | "start"
+  | "provider";
 
 export interface Problem {
   field: Field;
@@ -50,8 +72,10 @@ export interface Problem {
 
 type Fields = Record<string, unknown>;
 
-const isObject = (value: unknown): value is Fields => typeof value === "object" && value !== null && !Array.isArray(value);
-const isText = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
+const isObject = (value: unknown): value is Fields =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const isText = (value: unknown): value is string =>
+  typeof value === "string" && value.trim() !== "";
 const isWeekday = (value: unknown): value is Weekday => WEEKDAYS.includes(value as Weekday);
 const isPriority = (value: unknown): value is Priority => PRIORITIES.includes(value as Priority);
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -73,21 +97,31 @@ function failer(problems: Problem[]) {
 export function parseSchedule(value: unknown, problems: Problem[]): Schedule | null {
   const fail = failer(problems);
   if (!isObject(value)) return fail("schedule", "Schedule must be weekly, monthly or cron.");
-  const time = () => (typeof value.time === "string" && TIME.test(value.time) ? value.time : fail("time", "Time must be HH:MM, from 00:00 to 23:59."));
+  const time = () =>
+    typeof value.time === "string" && TIME.test(value.time)
+      ? value.time
+      : fail("time", "Time must be HH:MM, from 00:00 to 23:59.");
   switch (value.kind) {
     case "weekly": {
       const at = time();
       const days = value.weekdays;
-      const weekdays = !Array.isArray(days) || !days.every(isWeekday)
-        ? fail("weekdays", "Weekdays must be mon to sun.")
-        : days.length === 0
-          ? fail("weekdays", "Pick at least one day.")
-          : WEEKDAYS.filter((day) => days.includes(day));
+      const weekdays =
+        !Array.isArray(days) || !days.every(isWeekday)
+          ? fail("weekdays", "Weekdays must be mon to sun.")
+          : days.length === 0
+            ? fail("weekdays", "Pick at least one day.")
+            : WEEKDAYS.filter((day) => days.includes(day));
       return at === null || weekdays === null ? null : { kind: "weekly", time: at, weekdays };
     }
     case "monthly": {
       const at = time();
-      const day = typeof value.day === "number" && Number.isInteger(value.day) && value.day >= 1 && value.day <= 31 ? value.day : fail("day", "Day of month must be a whole number from 1 to 31.");
+      const day =
+        typeof value.day === "number" &&
+        Number.isInteger(value.day) &&
+        value.day >= 1 &&
+        value.day <= 31
+          ? value.day
+          : fail("day", "Day of month must be a whole number from 1 to 31.");
       return at === null || day === null ? null : { kind: "monthly", time: at, day };
     }
     case "cron": {
@@ -104,11 +138,20 @@ function parseStart(value: unknown, problems: Problem[]): SessionStart | null {
   const fail = failer(problems);
   if (value === undefined) return DEFAULT_START;
   if (!isObject(value)) return fail("start", "Session start must be an object.");
-  const { enabled = DEFAULT_START.enabled, provider = null, use_worktree = DEFAULT_START.use_worktree, auto_approve = DEFAULT_START.auto_approve } = value;
-  const flag = (flagValue: unknown, message: string) => (typeof flagValue === "boolean" ? flagValue : fail("start", message));
+  const {
+    enabled = DEFAULT_START.enabled,
+    provider = null,
+    use_worktree = DEFAULT_START.use_worktree,
+    auto_approve = DEFAULT_START.auto_approve,
+  } = value;
+  const flag = (flagValue: unknown, message: string) =>
+    typeof flagValue === "boolean" ? flagValue : fail("start", message);
   const on = flag(enabled, "Start session must be true or false.");
   // Boxed, since null is a valid provider and also what a failure stands in with.
-  const chosen = provider === null || isText(provider) ? { provider } : fail("provider", "Provider must be a provider key, or null for PlaneAI's default.");
+  const chosen =
+    provider === null || isText(provider)
+      ? { provider }
+      : fail("provider", "Provider must be a provider key, or null for PlaneAI's default.");
   const worktree = flag(use_worktree, "Worktree must be true or false.");
   const approve = flag(auto_approve, "Auto-approve must be true or false.");
   if (on === null || chosen === null || worktree === null || approve === null) return null;
@@ -118,27 +161,61 @@ function parseStart(value: unknown, problems: Problem[]): SessionStart | null {
 function parseTask(value: unknown, problems: Problem[]): TaskTemplate | null {
   const fail = failer(problems);
   if (!isObject(value)) return fail("task", "Task must be an object.");
-  const { title: rawTitle, description: rawDescription = "", priority: rawPriority = 0, tags: rawTags = [], start: rawStart } = value;
+  const {
+    title: rawTitle,
+    description: rawDescription = "",
+    priority: rawPriority = 0,
+    tags: rawTags = [],
+    start: rawStart,
+  } = value;
   const title = isText(rawTitle) ? rawTitle : fail("title", "Enter a task title.");
-  const description = typeof rawDescription === "string" ? rawDescription : fail("description", "Description must be text.");
-  const priority = isPriority(rawPriority) ? rawPriority : fail("priority", "Priority must be 0, 1, 2 or 3.");
-  const tags = Array.isArray(rawTags) && rawTags.every((tag) => typeof tag === "string") ? normalizeTags(rawTags) : fail("tags", "Tags must be a list of text.");
+  const description =
+    typeof rawDescription === "string"
+      ? rawDescription
+      : fail("description", "Description must be text.");
+  const priority = isPriority(rawPriority)
+    ? rawPriority
+    : fail("priority", "Priority must be a whole number from 0 to 5.");
+  const tags =
+    Array.isArray(rawTags) && rawTags.every((tag) => typeof tag === "string")
+      ? normalizeTags(rawTags)
+      : fail("tags", "Tags must be a list of text.");
   const start = parseStart(rawStart, problems);
-  return title === null || description === null || priority === null || tags === null || start === null ? null : { title, description, priority, tags, start };
+  return title === null ||
+    description === null ||
+    priority === null ||
+    tags === null ||
+    start === null
+    ? null
+    : { title, description, priority, tags, start };
 }
 
 /** One routine from the settings document: the routine, or every problem found, each with its field. */
 export function checkRoutine(value: unknown): { routine: Routine } | { problems: Problem[] } {
-  if (!isObject(value)) return { problems: [{ field: "routine", message: "Routine must be an object." }] };
+  if (!isObject(value))
+    return { problems: [{ field: "routine", message: "Routine must be an object." }] };
   const problems: Problem[] = [];
   const fail = failer(problems);
   const id = isText(value.id) ? value.id : fail("id", "Routine id must be a nonempty string.");
   const name = isText(value.name) ? value.name : fail("name", "Enter a name.");
-  const enabled = typeof value.enabled === "boolean" ? value.enabled : fail("enabled", "Enabled must be true or false.");
-  const project_path = isText(value.project_path) ? value.project_path : fail("project", "Choose a project.");
+  const enabled =
+    typeof value.enabled === "boolean"
+      ? value.enabled
+      : fail("enabled", "Enabled must be true or false.");
+  const project_path = isText(value.project_path)
+    ? value.project_path
+    : fail("project", "Choose a project.");
   const schedule = parseSchedule(value.schedule, problems);
   const task = parseTask(value.task, problems);
-  if (id === null || name === null || enabled === null || project_path === null || schedule === null || task === null) return { problems };
+  if (
+    id === null ||
+    name === null ||
+    enabled === null ||
+    project_path === null ||
+    schedule === null ||
+    task === null
+  )
+    return { problems };
   return { routine: { id, name, enabled, project_path, schedule, task } };
 }
 
@@ -151,7 +228,10 @@ export function routineKey(value: unknown, index: number): string {
  * The boundary for the settings document. A malformed routine yields a problem under its key
  * and never blocks the others; everything past this point trusts the types.
  */
-export function parseRoutines(settings: unknown): { routines: Routine[]; problems: Map<string, string> } {
+export function parseRoutines(settings: unknown): {
+  routines: Routine[];
+  problems: Map<string, string>;
+} {
   const entries = isObject(settings) && Array.isArray(settings.routines) ? settings.routines : [];
   const keys = entries.map(routineKey);
   const routines: Routine[] = [];

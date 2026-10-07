@@ -5,20 +5,22 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
-  pull-requests: read
-  issues: read
+  contents: read
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  gate:
+  version:
     runs-on: ubuntu-24.04
     if: "!contains(github.event.head_commit.message, 'ci skip') && !contains(github.event.head_commit.message, 'skip ci')"
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -27,77 +29,57 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
       - name: Install pnpm
         run: npm install -g pnpm@10.28.2
       - run: pnpm install --frozen-lockfile
-      - run: make test
-      - run: make verify-package
-      - name: Check version
+      - name: Determine the next version
         id: version
-        run: |
-          echo "--- auto version raw output ---"
-          pnpm exec auto version 2>&1 | tee /tmp/auto-output.txt || true
-          echo "--- end raw output ---"
-          VERSION=$(tail -1 /tmp/auto-output.txt)
-          echo "Parsed VERSION=$VERSION"
-          if [[ "$VERSION" == "patch" || "$VERSION" == "minor" || "$VERSION" == "major" ]]; then
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          else
-            echo "No valid version bump detected, skipping release"
-            echo "version=" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  release:
-    needs: gate
-    if: needs.gate.outputs.version != ''
-    runs-on: ubuntu-24.04
-    outputs:
-      tag: ${{ steps.tag.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-      - name: Determine new version
-        id: tag
         shell: bash
         run: |
-          BUMP="${{ needs.gate.outputs.version }}"
-          CURRENT=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          CURRENT="${CURRENT#v}"
-          IFS='.' read -r major minor patch <<< "$CURRENT"
-          case "$BUMP" in
+          set -euo pipefail
+          # A failing auto fails the release; an empty bump means nothing to release.
+          bump=$(pnpm exec auto version | tail -n 1)
+          case "$bump" in
+            major | minor | patch) ;;
+            "")
+              echo "No release-worthy change since the last release"
+              exit 0
+              ;;
+            *)
+              echo "auto version printed an unexpected bump: $bump" >&2
+              exit 1
+              ;;
+          esac
+          current=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v0.0.0)
+          IFS=. read -r major minor patch <<< "${current#v}"
+          case "$bump" in
             major) major=$((major + 1)); minor=0; patch=0 ;;
             minor) minor=$((minor + 1)); patch=0 ;;
             patch) patch=$((patch + 1)) ;;
           esac
           echo "tag=v${major}.${minor}.${patch}" >> "$GITHUB_OUTPUT"
-      - name: Create tag
-        run: |
-          git tag ${{ steps.tag.outputs.tag }}
-          git push origin ${{ steps.tag.outputs.tag }}
-      - name: Create draft release
-        run: |
-          gh release create ${{ steps.tag.outputs.tag }} \
-            --draft \
-            --title "${{ steps.tag.outputs.tag }}" \
-            --generate-notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Each platform builds, checks and smoke-tests its own binary natively before anything is published.
   build:
-    needs: release
-    environment: release
-    runs-on: ubuntu-24.04
+    needs: version
+    if: needs.version.outputs.tag != ''
+    strategy:
+      matrix:
+        include:
+          - platform: macos-arm64
+            runner: macos-latest
+          - platform: linux-x64
+            runner: ubuntu-24.04
+          - platform: windows-x64
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.release.outputs.tag }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -106,53 +88,53 @@ jobs:
           bun-version: 1.4.2
       - name: Install pnpm
         run: npm install -g pnpm@10.28.2
+      - name: Install make
+        if: runner.os == 'Windows'
+        run: choco install make --no-progress -y
       - run: pnpm install --frozen-lockfile
       - run: make test
       - name: Inject version
-        run: node scripts/inject-release-version.mjs ${{ needs.release.outputs.tag }}
-      - run: make build-ui
-      # Bun cross-compiles, so one runner produces every platform's self-contained sidecar.
-      - name: Stage and archive packages
-        shell: bash
+        run: node scripts/inject-release-version.mjs ${{ needs.version.outputs.tag }}
+      - name: Verify the package declares and answers the release version
+        run: make verify-package
+        env:
+          EXPECTED_VERSION: ${{ needs.version.outputs.tag }}
+      - run: make smoke
+      - name: Archive
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          for spec in macos-arm64:bun-darwin-arm64:planeai-plugin-routines \
-                      linux-x64:bun-linux-x64:planeai-plugin-routines \
-                      windows-x64:bun-windows-x64:planeai-plugin-routines.exe; do
-            IFS=: read -r platform target binary <<< "$spec"
-            root="dist/$platform/planeai-plugin-routines"
-            mkdir -p "$root/bin/$platform" "$root/ui"
-            node scripts/stage-manifest.mjs "$platform" > "$root/planeai-plugin.json"
-            cp build/ui/*.js "$root/ui/"
-            bun build --compile --minify --target="$target" src/main.ts --outfile "$root/bin/$platform/$binary"
-            chmod +x "$root/bin/$platform/$binary"
-            if [ "$platform" = linux-x64 ]; then node scripts/verify-package-handshake.mjs "$root" "$platform"; fi
-            if [ "$platform" = windows-x64 ]; then
-              (cd "dist/$platform" && zip -qr "../../artifacts/planeai-plugin-routines-$platform.zip" planeai-plugin-routines)
-            else
-              tar -C "dist/$platform" -czf "artifacts/planeai-plugin-routines-$platform.tar.gz" planeai-plugin-routines
-            fi
-          done
+          name="planeai-plugin-routines-${{ matrix.platform }}"
+          if [ "${{ matrix.platform }}" = windows-x64 ]; then
+            pwsh -NoProfile -Command "Compress-Archive -Path dist/planeai-plugin-routines -DestinationPath artifacts/$name.zip"
+          else
+            tar -C dist -czf "artifacts/$name.tar.gz" planeai-plugin-routines
+          fi
       - uses: actions/upload-artifact@v4
         with:
-          name: planeai-plugin-routines
+          name: package-${{ matrix.platform }}
           path: artifacts/*
+          if-no-files-found: error
 
+  # Runs only when every platform passed, so a failed build leaves no tag and no release behind.
   publish:
-    needs: [release, build]
+    needs: [version, build]
     runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
-        with: { path: artifacts }
-      - name: Upload release assets
-        shell: bash
-        run: find artifacts -type f -print0 | xargs -0 gh release upload "${{ needs.release.outputs.tag }}" --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-      - name: Publish release
-        run: gh release edit "${{ needs.release.outputs.tag }}" --draft=false
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: artifacts
+      - name: Tag and publish the release
+        run: |
+          gh release create "${{ needs.version.outputs.tag }}" artifacts/* \
+            --target "${{ github.sha }}" \
+            --title "${{ needs.version.outputs.tag }}" \
+            --generate-notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}

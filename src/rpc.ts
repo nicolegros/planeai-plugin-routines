@@ -57,7 +57,9 @@ export class JsonRpcPeer {
       if (signal?.aborted) return reject(cancelled());
       const id = `routines-${++this.nextId}`;
       if (!this.send({ jsonrpc: "2.0", id, method, params })) {
-        return reject(new RpcError(-32000, `request exceeds the ${MAX_FRAME_BYTES}-byte frame limit`));
+        return reject(
+          new RpcError(-32000, `request exceeds the ${MAX_FRAME_BYTES}-byte frame limit`),
+        );
       }
       // PlaneAI may never answer a callback of a request it gave up on, so the abort settles it.
       const abort = () => {
@@ -74,20 +76,37 @@ export class JsonRpcPeer {
   }
 
   private dispatch(line: string): void {
-    let message: { id?: Id; method?: unknown; params?: unknown; result?: unknown; error?: { code?: unknown; message?: unknown } };
+    let message: {
+      id?: Id;
+      method?: unknown;
+      params?: unknown;
+      result?: unknown;
+      error?: { code?: unknown; message?: unknown };
+    };
+    let parsed: unknown;
     try {
-      message = JSON.parse(line);
+      parsed = JSON.parse(line);
     } catch (error) {
       console.error(`ignored malformed JSON-RPC frame: ${String(error)}`);
       return;
     }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      console.error(`ignored JSON-RPC frame that is not an object: ${line.trim()}`);
+      return;
+    }
+    message = parsed;
     if (message.method === undefined) {
       const pending = typeof message.id === "string" ? this.outgoing.get(message.id) : undefined;
       if (!pending) return;
       this.outgoing.delete(message.id as string);
       if (message.error) {
         const { code, message: text } = message.error;
-        pending.reject(new RpcError(typeof code === "number" ? code : -32603, typeof text === "string" ? text : "host error"));
+        pending.reject(
+          new RpcError(
+            typeof code === "number" ? code : -32603,
+            typeof text === "string" ? text : "host error",
+          ),
+        );
       } else {
         pending.resolve(message.result ?? null);
       }
@@ -118,7 +137,11 @@ export class JsonRpcPeer {
       (result) => answer({ jsonrpc: "2.0", id, result: result ?? null }),
       (error: unknown) => {
         const code = error instanceof RpcError ? error.code : -32000;
-        answer({ jsonrpc: "2.0", id, error: { code, message: error instanceof Error ? error.message : String(error) } });
+        answer({
+          jsonrpc: "2.0",
+          id,
+          error: { code, message: error instanceof Error ? error.message : String(error) },
+        });
       },
     );
   }
@@ -136,7 +159,14 @@ export class JsonRpcPeer {
     console.error(`JSON-RPC frame over ${MAX_FRAME_BYTES} bytes not sent`);
     // A response must still answer its request, or the host waits out its deadline.
     if (frame.id !== undefined) {
-      this.write({ jsonrpc: "2.0", id: frame.id, error: { code: -32000, message: `response exceeds the ${MAX_FRAME_BYTES}-byte frame limit` } });
+      this.write({
+        jsonrpc: "2.0",
+        id: frame.id,
+        error: {
+          code: -32000,
+          message: `response exceeds the ${MAX_FRAME_BYTES}-byte frame limit`,
+        },
+      });
     }
   }
 }

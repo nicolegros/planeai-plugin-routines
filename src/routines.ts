@@ -6,12 +6,25 @@ import { render } from "./template";
 
 export const PLUGIN_ID = "routines";
 export const PLUGIN_NAME = "Routines";
-export const HOST_API_VERSION = "planeai.plugin-host.v1";
+export const HOST_API_VERSION = "planeai.plugin-host.v4";
 /** Replaced by scripts/inject-release-version.mjs in release builds. */
 export const PLUGIN_VERSION = "0.0.0";
 
 const INVALID_PARAMS = -32602;
 const METHOD_NOT_FOUND = -32601;
+const NOT_GRANTED = -32003;
+
+/**
+ * The `host.tasks.create` refusals that retrying the same operation cannot fix, as the routine reports them.
+ * Every other failure, such as -32004 (temporarily unavailable) or -32603, is retried.
+ */
+const FINAL_REFUSALS: Record<number, (message: string) => string> = {
+  [INVALID_PARAMS]: (message) => message,
+  [NOT_GRANTED]: (message) =>
+    `PlaneAI did not grant Routines a capability it needs (${message}). Reinstall the plugin.`,
+  [METHOD_NOT_FOUND]: (message) =>
+    `This PlaneAI cannot create tasks for Routines (${message}). Update PlaneAI.`,
+};
 
 /**
  * `host.tasks.create` params; PlaneAI dedupes on (plugin, operation_id). With `start`, it also
@@ -32,10 +45,11 @@ export interface CreatedTask {
   [field: string]: unknown;
 }
 
-/** `session` is set only when the request asked for a start. */
+/** `session` is set only when the request asked for a start; `session_error` when it failed. */
 export interface TaskCreation {
   task: CreatedTask;
-  session?: "starting" | "exists";
+  session?: "starting" | "exists" | "failed";
+  session_error?: string;
 }
 
 /** The PlaneAI callbacks the plugin makes, each within the host request whose signal it is given. */
@@ -67,7 +81,8 @@ function taskRequest(routine: Routine, at: Date, operation_id: string): TaskRequ
 }
 
 /** Occurrences fall on whole minutes, so their ids carry no milliseconds. */
-const occurrenceId = (routine: Routine, at: Date) => `routine:${routine.id}:${at.toISOString().replace(".000Z", "Z")}`;
+const occurrenceId = (routine: Routine, at: Date) =>
+  `routine:${routine.id}:${at.toISOString().replace(".000Z", "Z")}`;
 
 function failure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -132,17 +147,62 @@ export class RoutinesPlugin {
   }
 
   /** One routine's step: rebaseline, wait, or create the latest due occurrence. */
-  private async advance(routine: Routine, state: RoutineState | undefined, now: Date, signal?: AbortSignal): Promise<{ state: RoutineState; created: boolean }> {
+  private async advance(
+    routine: Routine,
+    state: RoutineState | undefined,
+    now: Date,
+    signal?: AbortSignal,
+  ): Promise<{ state: RoutineState; created: boolean }> {
     const fingerprint = toCron(routine.schedule);
     if (!state || state.fingerprint !== fingerprint) {
-      return { state: { fingerprint, last_fired: now.toISOString(), last_task_key: state?.last_task_key ?? null, last_error: null }, created: false };
+      return {
+        state: {
+          fingerprint,
+          last_fired: now.toISOString(),
+          last_task_key: state?.last_task_key ?? null,
+          last_error: null,
+        },
+        created: false,
+      };
     }
     const due = latestOccurrence(routine.schedule, new Date(state.last_fired), now);
     if (!due) return { state, created: false };
+    const operation = occurrenceId(routine, due);
+    // Stdout carries the protocol; diagnostics go to stderr, which PlaneAI keeps in the plugin's log.
+    const log = (outcome: string) =>
+      console.error(`routine ${routine.id}: ${operation} ${outcome}`);
     try {
-      const { task } = await this.host.createTask(taskRequest(routine, due, occurrenceId(routine, due)), signal);
-      return { state: { fingerprint, last_fired: due.toISOString(), last_task_key: task.key, last_error: null }, created: true };
+      const { task, session, session_error } = await this.host.createTask(
+        taskRequest(routine, due, operation),
+        signal,
+      );
+      const sessionFailure =
+        session === "failed"
+          ? `but its session could not start: ${session_error ?? "unknown error"}`
+          : null;
+      log(
+        `created ${task.key}${sessionFailure ? `, ${sessionFailure}` : session === "starting" ? ", its session is starting" : ""}`,
+      );
+      return {
+        state: {
+          fingerprint,
+          last_fired: due.toISOString(),
+          last_task_key: task.key,
+          last_error: sessionFailure ? `${task.key} was created, ${sessionFailure}` : null,
+        },
+        created: true,
+      };
     } catch (error) {
+      // PlaneAI refused this occurrence for good: retrying it cannot succeed, the next one may.
+      const refusal = error instanceof RpcError ? FINAL_REFUSALS[error.code] : undefined;
+      if (refusal) {
+        log(`skipped: ${failure(error)}`);
+        return {
+          state: { ...state, last_fired: due.toISOString(), last_error: refusal(failure(error)) },
+          created: false,
+        };
+      }
+      log(`failed, retrying on the next tick: ${failure(error)}`);
       // last_fired stays, so the next tick retries the same operation id.
       return { state: { ...state, last_error: failure(error) }, created: false };
     }
@@ -158,20 +218,36 @@ export class RoutinesPlugin {
           const known = routine.enabled ? state[routine.id] : undefined;
           return {
             id: routine.id,
-            next_run: routine.enabled ? (nextRun(routine.schedule, now)?.toISOString() ?? null) : null,
+            next_run: routine.enabled
+              ? (nextRun(routine.schedule, now)?.toISOString() ?? null)
+              : null,
             last_fired: known?.last_fired ?? null,
             last_task_key: known?.last_task_key ?? null,
             error: known?.last_error ?? null,
           };
         }),
-        ...[...problems].map(([id, error]) => ({ id, next_run: null, last_fired: null, last_task_key: null, error })),
+        ...[...problems].map(([id, error]) => ({
+          id,
+          next_run: null,
+          last_fired: null,
+          last_task_key: null,
+          error,
+        })),
       ],
     };
   }
 
+  /** `action_id` names the user's click: retrying it reuses the operation id, so PlaneAI creates one task. */
   private async runNow(params: unknown, signal?: AbortSignal): Promise<TaskCreation> {
-    const id = typeof params === "object" && params !== null ? (params as Record<string, unknown>).id : undefined;
-    if (typeof id !== "string" || !id) throw new RpcError(INVALID_PARAMS, "id must be a nonempty string");
+    const { id, action_id } =
+      typeof params === "object" && params !== null ? (params as Record<string, unknown>) : {};
+    if (typeof id !== "string" || !id)
+      throw new RpcError(INVALID_PARAMS, "id must be a nonempty string");
+    if (typeof action_id !== "string" || !action_id || action_id.length > 64)
+      throw new RpcError(
+        INVALID_PARAMS,
+        "action_id must be a nonempty string of at most 64 characters",
+      );
     const { routines, problems } = parseRoutines(await this.host.settings(signal));
     const problem = problems.get(id);
     if (problem) throw new RpcError(INVALID_PARAMS, problem);
@@ -179,7 +255,10 @@ export class RoutinesPlugin {
     if (!routine) throw new RpcError(INVALID_PARAMS, "This routine no longer exists.");
     const now = this.now();
     try {
-      return await this.host.createTask(taskRequest(routine, now, `routine:${id}:manual:${now.toISOString()}`), signal);
+      return await this.host.createTask(
+        taskRequest(routine, now, `routine:${id}:manual:${action_id}`),
+        signal,
+      );
     } catch (error) {
       throw new RpcError(error instanceof RpcError ? error.code : -32000, failure(error));
     }

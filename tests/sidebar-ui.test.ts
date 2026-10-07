@@ -32,7 +32,11 @@ function harness(settings: () => Promise<unknown>) {
       },
     },
   };
-  return { context, open: context.host.navigation.open as ReturnType<typeof vi.fn>, changeListeners };
+  return {
+    context,
+    open: context.host.navigation.open as ReturnType<typeof vi.fn>,
+    changeListeners,
+  };
 }
 
 const button = () => document.querySelector("button")!;
@@ -49,7 +53,10 @@ describe("the sidebar button", () => {
 
   beforeEach(() => {
     // Tuesday, 08:00 in America/Toronto.
-    vi.useFakeTimers({ now: new Date("2026-10-06T12:00:00Z"), toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.useFakeTimers({
+      now: new Date("2026-10-06T12:00:00Z"),
+      toFake: ["Date", "setInterval", "clearInterval"],
+    });
   });
 
   afterEach(() => {
@@ -62,7 +69,11 @@ describe("the sidebar button", () => {
   it("shows the time of today's next run among enabled routines", async () => {
     const { context } = harness(async () => ({
       routines: [
-        routine("weekdays", true, { kind: "weekly", time: "09:00", weekdays: ["mon", "tue", "wed", "thu", "fri"] }),
+        routine("weekdays", true, {
+          kind: "weekly",
+          time: "09:00",
+          weekdays: ["mon", "tue", "wed", "thu", "fri"],
+        }),
         routine("earlier but off", false, { kind: "weekly", time: "08:30", weekdays: ["tue"] }),
       ],
     }));
@@ -85,7 +96,9 @@ describe("the sidebar button", () => {
   });
 
   it("shows no time without an enabled routine", async () => {
-    const { context } = harness(async () => ({ routines: [routine("off", false, { kind: "weekly", time: "09:00", weekdays: ["tue"] })] }));
+    const { context } = harness(async () => ({
+      routines: [routine("off", false, { kind: "weekly", time: "09:00", weekdays: ["tue"] })],
+    }));
     await render(context);
     expect(label()).toBe("Routines");
     expect(hint()).toBe(null);
@@ -106,7 +119,13 @@ describe("the sidebar button", () => {
     await render(context);
     expect(hint()).toBe(null);
 
-    routines = [routine("daily", true, { kind: "weekly", time: "17:45", weekdays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] })];
+    routines = [
+      routine("daily", true, {
+        kind: "weekly",
+        time: "17:45",
+        weekdays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      }),
+    ];
     for (const listener of changeListeners) listener();
     await settle();
     expect(hint()).toBe("17:45");
@@ -127,11 +146,22 @@ describe("the sidebar button", () => {
 describe("the manifest", () => {
   it("contributes the manager as a host dialog", () => {
     const manifest = JSON.parse(readFileSync("planeai-plugin.json", "utf8"));
-    expect(manifest.ui_contributions).toContainEqual({ id: "routines", label: "Routines", placement: "dialog", entrypoint: "ui/routines.js" });
+    expect(manifest.ui_contributions).toContainEqual({
+      id: "routines",
+      label: "Routines",
+      placement: "dialog",
+      entrypoint: "ui/routines.js",
+    });
   });
 
   it("contributes the sidebar button above the sidebar", () => {
     const manifest = JSON.parse(readFileSync("planeai-plugin.json", "utf8"));
-    expect(manifest.ui_contributions).toContainEqual({ id: "open", label: "Routines", placement: "sidebar.header", entrypoint: "ui/sidebar.js", order: 0 });
+    expect(manifest.ui_contributions).toContainEqual({
+      id: "open",
+      label: "Routines",
+      placement: "sidebar.header",
+      entrypoint: "ui/sidebar.js",
+      order: 0,
+    });
   });
 });

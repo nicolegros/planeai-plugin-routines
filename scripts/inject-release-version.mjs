@@ -24,6 +24,10 @@ const replaceExactlyOnce = (path, pattern, replacement) => {
 
 rewriteJsonVersion("package.json");
 rewriteJsonVersion("planeai-plugin.json");
-replaceExactlyOnce("src/routines.ts", /export const PLUGIN_VERSION = "0\.0\.0";/, `export const PLUGIN_VERSION = "${version}";`);
+replaceExactlyOnce(
+  "src/routines.ts",
+  /export const PLUGIN_VERSION = "0\.0\.0";/,
+  `export const PLUGIN_VERSION = "${version}";`,
+);
 
 console.log(`Injected release version ${version}`);

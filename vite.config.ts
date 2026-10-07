@@ -7,7 +7,8 @@ const entry = process.env.UI_ENTRY;
 // The host loads each entry as one self-contained ESM file from a blob URL, so CSS is
 // injected by the component code, nothing is split into chunks, and entries build one at a time.
 export default defineConfig(({ command }) => {
-  if (command === "build" && !entry) throw new Error("set UI_ENTRY to the UI to build, or run make build-ui");
+  if (command === "build" && !entry)
+    throw new Error("set UI_ENTRY to the UI to build, or run make build-ui");
   return {
     plugins: [svelte({ compilerOptions: { css: "injected" } })],
     build: {

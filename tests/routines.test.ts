@@ -1,9 +1,15 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RpcError } from "../src/rpc";
-import { RoutinesPlugin, type Host, type TaskRequest } from "../src/routines";
+import {
+  RoutinesPlugin,
+  type CreatedTask,
+  type Host,
+  type TaskCreation,
+  type TaskRequest,
+} from "../src/routines";
 import { StateStore } from "../src/state";
 
 const manifest = JSON.parse(readFileSync(join(process.cwd(), "planeai-plugin.json"), "utf8"));
@@ -14,7 +20,12 @@ const retro = (overrides: Record<string, unknown> = {}) => ({
   enabled: true,
   project_path: "/work/app",
   schedule: { kind: "weekly", time: "09:00", weekdays: ["mon", "tue", "wed", "thu", "fri"] },
-  task: { title: "Retro {{date}}", description: "{{weekday}} at {{time}}", priority: 3, tags: ["ritual"] },
+  task: {
+    title: "Retro {{date}}",
+    description: "{{weekday}} at {{time}}",
+    priority: 3,
+    tags: ["ritual"],
+  },
   ...overrides,
 });
 
@@ -23,35 +34,56 @@ function harness(routines: unknown[] = [retro()]) {
   const dir = mkdtempSync(join(tmpdir(), "routines-plugin-"));
   const statePath = join(dir, "routines-state.json");
   const created: TaskRequest[] = [];
+  const operations = new Map<string, CreatedTask>();
   const world = {
     settings: { tick_interval_ms: 30_000, routines } as Record<string, unknown>,
     now: new Date("2026-10-06T12:00:00Z"),
     failure: null as Error | null,
+    /** Where a requested session stands when PlaneAI replays an operation it already created. */
+    replayed: { session: "exists" } as Pick<TaskCreation, "session" | "session_error">,
     beforeCreate: () => {},
+    /** PlaneAI creates the next task but gives up on the request before replying. */
+    loseReply: false,
   };
   const host: Host = {
     settings: async () => world.settings,
+    // PlaneAI dedupes on the operation id: a retry returns the original task, and the first start's outcome.
     createTask: async (request) => {
       world.beforeCreate();
       if (world.failure) throw world.failure;
+      const known = operations.get(request.operation_id);
+      if (known) return { task: known, ...(request.start ? world.replayed : {}) };
       created.push(request);
-      return { task: { key: `APP-${created.length}`, title: request.title }, ...(request.start ? { session: "starting" as const } : {}) };
+      const task = { key: `APP-${created.length}`, title: request.title };
+      operations.set(request.operation_id, task);
+      if (world.loseReply) {
+        world.loseReply = false;
+        throw new RpcError(-32800, "request cancelled");
+      }
+      return { task, ...(request.start ? { session: "starting" as const } : {}) };
     },
   };
   const plugin = new RoutinesPlugin(host, new StateStore(statePath), () => world.now);
   const at = (instant: string) => (world.now = new Date(instant));
   const tick = () => plugin.handle("routines.tick", null);
   const state = () => JSON.parse(readFileSync(statePath, "utf8"));
-  return { plugin, world, created, at, tick, state };
+  return { plugin, world, created, at, tick, state, statePath };
 }
 
 describe("RoutinesPlugin", () => {
   it("asks for the capabilities it uses, including starting sessions", () => {
-    expect(manifest.capabilities).toEqual(["settings", "projects.read", "tasks.create", "sessions.start"]);
+    expect(manifest.capabilities).toEqual([
+      "settings",
+      "projects.read",
+      "tasks.create",
+      "sessions.start",
+    ]);
   });
 
   it("handshakes with the identity the manifest declares", async () => {
-    const result = await harness().plugin.handle("plugin.handshake", { host_api_version: manifest.host_api_version });
+    const result = await harness().plugin.handle("plugin.handshake", {
+      host_api_version: manifest.host_api_version,
+    });
     expect(result).toEqual({
       plugin_id: manifest.id,
       plugin_name: manifest.name,
@@ -66,7 +98,14 @@ describe("RoutinesPlugin", () => {
     // 08:00 in Toronto; the 09:00 of yesterday is in the past.
     await expect(tick()).resolves.toEqual({ created: 0 });
     expect(created).toEqual([]);
-    expect(state()).toEqual({ r1: { fingerprint: "0 9 * * 1,2,3,4,5", last_fired: "2026-10-06T12:00:00.000Z", last_task_key: null, last_error: null } });
+    expect(state()).toEqual({
+      r1: {
+        fingerprint: "0 9 * * 1,2,3,4,5",
+        last_fired: "2026-10-06T12:00:00.000Z",
+        last_task_key: null,
+        last_error: null,
+      },
+    });
   });
 
   it("creates one task at the occurrence, rendered at the occurrence", async () => {
@@ -87,13 +126,29 @@ describe("RoutinesPlugin", () => {
         start: { provider: null, use_worktree: true, auto_approve: true },
       },
     ]);
-    expect(state().r1).toEqual({ fingerprint: "0 9 * * 1,2,3,4,5", last_fired: "2026-10-06T13:00:00.000Z", last_task_key: "APP-1", last_error: null });
+    expect(state().r1).toEqual({
+      fingerprint: "0 9 * * 1,2,3,4,5",
+      last_fired: "2026-10-06T13:00:00.000Z",
+      last_task_key: "APP-1",
+      last_error: null,
+    });
   });
 
   it("asks PlaneAI to start the routine's session, or leaves start out when the routine does not start one", async () => {
     const { tick, at, created } = harness([
-      retro({ task: { title: "Review", start: { enabled: true, provider: "codex", use_worktree: false, auto_approve: false } } }),
-      retro({ id: "r2", task: { title: "Plan", start: { enabled: false, provider: "codex", use_worktree: false, auto_approve: false } } }),
+      retro({
+        task: {
+          title: "Review",
+          start: { enabled: true, provider: "codex", use_worktree: false, auto_approve: false },
+        },
+      }),
+      retro({
+        id: "r2",
+        task: {
+          title: "Plan",
+          start: { enabled: false, provider: "codex", use_worktree: false, auto_approve: false },
+        },
+      }),
     ]);
     await tick();
     at("2026-10-06T13:00:10Z");
@@ -108,7 +163,14 @@ describe("RoutinesPlugin", () => {
         tags: [],
         start: { provider: "codex", use_worktree: false, auto_approve: false },
       },
-      { project_path: "/work/app", operation_id: "routine:r2:2026-10-06T13:00:00Z", title: "Plan", description: "", priority: 0, tags: [] },
+      {
+        project_path: "/work/app",
+        operation_id: "routine:r2:2026-10-06T13:00:00Z",
+        title: "Plan",
+        description: "",
+        priority: 0,
+        tags: [],
+      },
     ]);
   });
 
@@ -117,22 +179,184 @@ describe("RoutinesPlugin", () => {
     await tick();
     at("2026-10-19T20:00:00Z");
     await expect(tick()).resolves.toEqual({ created: 1 });
-    expect(created.map((task) => [task.operation_id, task.title])).toEqual([["routine:r1:2026-10-19T13:00:00Z", "Retro 2026-10-19"]]);
+    expect(created.map((task) => [task.operation_id, task.title])).toEqual([
+      ["routine:r1:2026-10-19T13:00:00Z", "Retro 2026-10-19"],
+    ]);
   });
 
   it("records a failure and retries the same operation on the next tick", async () => {
     const { plugin, tick, at, world, created, state } = harness();
     await tick();
     at("2026-10-06T13:00:10Z");
-    world.failure = new RpcError(-32602, "project was not found or is hidden");
+    world.failure = new RpcError(-32603, "database is locked");
     await expect(tick()).resolves.toEqual({ created: 0 });
-    expect(state().r1).toMatchObject({ last_fired: "2026-10-06T12:00:00.000Z", last_error: "project was not found or is hidden" });
-    await expect(plugin.handle("routines.status", null)).resolves.toMatchObject({ routines: [{ id: "r1", error: "project was not found or is hidden" }] });
+    expect(state().r1).toMatchObject({
+      last_fired: "2026-10-06T12:00:00.000Z",
+      last_error: "database is locked",
+    });
+    await expect(plugin.handle("routines.status", null)).resolves.toMatchObject({
+      routines: [{ id: "r1", error: "database is locked" }],
+    });
     world.failure = null;
     at("2026-10-06T13:00:40Z");
     await expect(tick()).resolves.toEqual({ created: 1 });
     expect(created.map((task) => task.operation_id)).toEqual(["routine:r1:2026-10-06T13:00:00Z"]);
     expect(state().r1).toMatchObject({ last_task_key: "APP-1", last_error: null });
+  });
+
+  it("gives up on an occurrence PlaneAI refuses, keeps its error, and fires the next one", async () => {
+    const { tick, at, world, created, state } = harness();
+    await tick();
+    at("2026-10-06T13:00:10Z");
+    world.failure = new RpcError(-32602, "project was not found or is hidden");
+    let attempts = 0;
+    world.beforeCreate = () => void attempts++;
+    await expect(tick()).resolves.toEqual({ created: 0 });
+    expect(state().r1).toMatchObject({
+      last_fired: "2026-10-06T13:00:00.000Z",
+      last_task_key: null,
+      last_error: "project was not found or is hidden",
+    });
+    at("2026-10-06T13:00:40Z");
+    await tick();
+    expect(attempts).toBe(1);
+
+    world.failure = null;
+    at("2026-10-07T13:00:10Z");
+    await expect(tick()).resolves.toEqual({ created: 1 });
+    expect(created.map((task) => task.operation_id)).toEqual(["routine:r1:2026-10-07T13:00:00Z"]);
+    expect(state().r1).toMatchObject({ last_task_key: "APP-1", last_error: null });
+  });
+
+  it("records the failed session PlaneAI replays when a lost state save makes it retry the operation", async () => {
+    const { tick, at, world, created, state, statePath } = harness([
+      retro({
+        task: {
+          ...retro().task,
+          start: { enabled: true, provider: "claude", use_worktree: true, auto_approve: true },
+        },
+      }),
+    ]);
+    await tick();
+    const beforeFiring = readFileSync(statePath, "utf8");
+    at("2026-10-06T13:00:10Z");
+    await expect(tick()).resolves.toEqual({ created: 1 });
+    // The sidecar was killed before its state reached the disk, then the session failed to start.
+    writeFileSync(statePath, beforeFiring);
+    world.replayed = {
+      session: "failed",
+      session_error: "failed to create worktree dir: Permission denied (os error 13)",
+    };
+    at("2026-10-06T13:00:40Z");
+    await tick();
+    expect(created.map((task) => task.operation_id)).toEqual(["routine:r1:2026-10-06T13:00:00Z"]);
+    expect(state().r1).toEqual({
+      fingerprint: "0 9 * * 1,2,3,4,5",
+      last_fired: "2026-10-06T13:00:00.000Z",
+      last_task_key: "APP-1",
+      last_error:
+        "APP-1 was created, but its session could not start: failed to create worktree dir: Permission denied (os error 13)",
+    });
+    at("2026-10-06T13:01:10Z");
+    await expect(tick()).resolves.toEqual({ created: 0 });
+  });
+
+  it("retries the same occurrence while PlaneAI is temporarily unavailable", async () => {
+    const { tick, at, world, created, state } = harness();
+    await tick();
+    at("2026-10-06T13:00:10Z");
+    world.failure = new RpcError(-32004, "provider plugin claude-chat is not running yet");
+    await expect(tick()).resolves.toEqual({ created: 0 });
+    expect(state().r1).toMatchObject({
+      last_fired: "2026-10-06T12:00:00.000Z",
+      last_error: "provider plugin claude-chat is not running yet",
+    });
+    world.failure = null;
+    at("2026-10-06T13:00:40Z");
+    await expect(tick()).resolves.toEqual({ created: 1 });
+    expect(created.map((task) => task.operation_id)).toEqual(["routine:r1:2026-10-06T13:00:00Z"]);
+    expect(state().r1).toMatchObject({ last_task_key: "APP-1", last_error: null });
+  });
+
+  it.each([
+    [
+      -32003,
+      "plugin capability is not granted",
+      "PlaneAI did not grant Routines a capability it needs (plugin capability is not granted). Reinstall the plugin.",
+    ],
+    [
+      -32601,
+      "host method not found",
+      "This PlaneAI cannot create tasks for Routines (host method not found). Update PlaneAI.",
+    ],
+  ])(
+    "skips an occurrence PlaneAI answers with %i, which no retry can fix",
+    async (code, message, recorded) => {
+      const { tick, at, world, created, state } = harness();
+      await tick();
+      at("2026-10-06T13:00:10Z");
+      world.failure = new RpcError(code, message);
+      let attempts = 0;
+      world.beforeCreate = () => void attempts++;
+      await expect(tick()).resolves.toEqual({ created: 0 });
+      at("2026-10-06T13:00:40Z");
+      await tick();
+      expect(attempts).toBe(1);
+      expect(created).toEqual([]);
+      expect(state().r1).toMatchObject({
+        last_fired: "2026-10-06T13:00:00.000Z",
+        last_error: recorded,
+      });
+    },
+  );
+
+  it("logs each occurrence it fires, retries or skips to stderr, with the routine and operation ids", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { tick, at, world } = harness([
+      retro({ task: { ...retro().task, start: { enabled: false } } }),
+      retro({ id: "r2", task: { ...retro().task, start: { enabled: true, provider: "codex" } } }),
+    ]);
+    await tick();
+    at("2026-10-06T13:00:10Z");
+    world.failure = new RpcError(-32603, "database is locked");
+    await tick();
+    world.failure = null;
+    at("2026-10-06T13:00:40Z");
+    await tick();
+    at("2026-10-07T13:00:10Z");
+    world.beforeCreate = () => {
+      world.failure = new RpcError(-32602, "project was not found or is hidden");
+    };
+    await tick();
+    expect(logged.mock.calls.map(([line]) => line)).toEqual([
+      "routine r1: routine:r1:2026-10-06T13:00:00Z failed, retrying on the next tick: database is locked",
+      "routine r2: routine:r2:2026-10-06T13:00:00Z failed, retrying on the next tick: database is locked",
+      "routine r1: routine:r1:2026-10-06T13:00:00Z created APP-1",
+      "routine r2: routine:r2:2026-10-06T13:00:00Z created APP-2, its session is starting",
+      "routine r1: routine:r1:2026-10-07T13:00:00Z skipped: project was not found or is hidden",
+      "routine r2: routine:r2:2026-10-07T13:00:00Z skipped: project was not found or is hidden",
+    ]);
+    logged.mockRestore();
+  });
+
+  it("logs a created task whose session PlaneAI could not start", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { tick, at, world, statePath } = harness([
+      retro({ task: { ...retro().task, start: { enabled: true, provider: "codex" } } }),
+    ]);
+    await tick();
+    const beforeFiring = readFileSync(statePath, "utf8");
+    at("2026-10-06T13:00:10Z");
+    await tick();
+    writeFileSync(statePath, beforeFiring);
+    world.replayed = { session: "failed", session_error: "Unknown provider: codex" };
+    at("2026-10-06T13:00:40Z");
+    await tick();
+    expect(logged.mock.calls.map(([line]) => line)).toEqual([
+      "routine r1: routine:r1:2026-10-06T13:00:00Z created APP-1, its session is starting",
+      "routine r1: routine:r1:2026-10-06T13:00:00Z created APP-1, but its session could not start: Unknown provider: codex",
+    ]);
+    logged.mockRestore();
   });
 
   it("never fires a disabled routine, and re-enabling it does not fire a stale occurrence", async () => {
@@ -175,10 +399,17 @@ describe("RoutinesPlugin", () => {
     const { tick, at, world, created, state } = harness();
     await tick();
     at("2026-10-06T15:00:00Z");
-    world.settings = { routines: [retro({ schedule: { kind: "weekly", time: "10:00", weekdays: ["tue"] } })] };
+    world.settings = {
+      routines: [retro({ schedule: { kind: "weekly", time: "10:00", weekdays: ["tue"] } })],
+    };
     await expect(tick()).resolves.toEqual({ created: 0 });
     expect(created).toEqual([]);
-    expect(state().r1).toEqual({ fingerprint: "0 10 * * 2", last_fired: "2026-10-06T15:00:00.000Z", last_task_key: null, last_error: null });
+    expect(state().r1).toEqual({
+      fingerprint: "0 10 * * 2",
+      last_fired: "2026-10-06T15:00:00.000Z",
+      last_task_key: null,
+      last_error: null,
+    });
   });
 
   it("prunes the state of deleted and invalid routines", async () => {
@@ -191,7 +422,11 @@ describe("RoutinesPlugin", () => {
   });
 
   it("reports next runs, last tasks and problems without writing", async () => {
-    const { plugin, tick, at, state } = harness([retro(), retro({ id: "r2", enabled: false }), retro({ id: "r3", task: { title: "" } })]);
+    const { plugin, tick, at, state } = harness([
+      retro(),
+      retro({ id: "r2", enabled: false }),
+      retro({ id: "r3", task: { title: "" } }),
+    ]);
     await tick();
     at("2026-10-06T13:00:10Z");
     await tick();
@@ -199,9 +434,21 @@ describe("RoutinesPlugin", () => {
     at("2026-10-06T13:30:00Z");
     await expect(plugin.handle("routines.status", null)).resolves.toEqual({
       routines: [
-        { id: "r1", next_run: "2026-10-07T13:00:00.000Z", last_fired: "2026-10-06T13:00:00.000Z", last_task_key: "APP-1", error: null },
+        {
+          id: "r1",
+          next_run: "2026-10-07T13:00:00.000Z",
+          last_fired: "2026-10-06T13:00:00.000Z",
+          last_task_key: "APP-1",
+          error: null,
+        },
         { id: "r2", next_run: null, last_fired: null, last_task_key: null, error: null },
-        { id: "r3", next_run: null, last_fired: null, last_task_key: null, error: "Enter a task title." },
+        {
+          id: "r3",
+          next_run: null,
+          last_fired: null,
+          last_task_key: null,
+          error: "Enter a task title.",
+        },
       ],
     });
     expect(state()).toEqual(before);
@@ -212,11 +459,16 @@ describe("RoutinesPlugin", () => {
     await tick();
     world.settings = { routines: [retro({ enabled: false })] };
     at("2026-10-06T15:30:12.345Z");
-    await expect(plugin.handle("routines.runNow", { id: "r1" })).resolves.toEqual({ task: { key: "APP-1", title: "Retro 2026-10-06" }, session: "starting" });
+    await expect(
+      plugin.handle("routines.runNow", { id: "r1", action_id: "4f1c2a9e-click" }),
+    ).resolves.toEqual({
+      task: { key: "APP-1", title: "Retro 2026-10-06" },
+      session: "starting",
+    });
     expect(created).toEqual([
       {
         project_path: "/work/app",
-        operation_id: "routine:r1:manual:2026-10-06T15:30:12.345Z",
+        operation_id: "routine:r1:manual:4f1c2a9e-click",
         title: "Retro 2026-10-06",
         description: "Tuesday at 11:30",
         priority: 3,
@@ -229,8 +481,38 @@ describe("RoutinesPlugin", () => {
 
   it("refuses to run a routine that is missing or invalid", async () => {
     const { plugin } = harness([retro({ id: "r3", task: { title: "" } })]);
-    await expect(plugin.handle("routines.runNow", { id: "nope" })).rejects.toThrow("This routine no longer exists.");
-    await expect(plugin.handle("routines.runNow", { id: "r3" })).rejects.toThrow("Enter a task title.");
-    await expect(plugin.handle("routines.runNow", {})).rejects.toMatchObject({ code: -32602 });
+    await expect(plugin.handle("routines.runNow", { id: "nope", action_id: "a1" })).rejects.toThrow(
+      "This routine no longer exists.",
+    );
+    await expect(plugin.handle("routines.runNow", { id: "r3", action_id: "a1" })).rejects.toThrow(
+      "Enter a task title.",
+    );
+    await expect(plugin.handle("routines.runNow", { action_id: "a1" })).rejects.toMatchObject({
+      code: -32602,
+    });
+    await expect(plugin.handle("routines.runNow", { id: "r3" })).rejects.toMatchObject({
+      code: -32602,
+      message: "action_id must be a nonempty string of at most 64 characters",
+    });
+  });
+
+  it("creates one task per Run now action, however often that action is retried", async () => {
+    const { plugin, at, world, created } = harness();
+    world.loseReply = true;
+    at("2026-10-06T15:30:12Z");
+    await expect(
+      plugin.handle("routines.runNow", { id: "r1", action_id: "click-1" }),
+    ).rejects.toMatchObject({ code: -32800 });
+    at("2026-10-06T15:30:20Z");
+    await expect(
+      plugin.handle("routines.runNow", { id: "r1", action_id: "click-1" }),
+    ).resolves.toMatchObject({ task: { key: "APP-1" } });
+    await expect(
+      plugin.handle("routines.runNow", { id: "r1", action_id: "click-2" }),
+    ).resolves.toMatchObject({ task: { key: "APP-2" } });
+    expect(created.map((task) => task.operation_id)).toEqual([
+      "routine:r1:manual:click-1",
+      "routine:r1:manual:click-2",
+    ]);
   });
 });

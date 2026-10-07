@@ -11,7 +11,10 @@ export interface SessionProviders {
 }
 
 /** The provider a session gets: the routine's own, or PlaneAI's default when it names none. */
-export function findProvider(list: SessionProviders | null, key: string | null): SessionProvider | undefined {
+export function findProvider(
+  list: SessionProviders | null,
+  key: string | null,
+): SessionProvider | undefined {
   const wanted = key ?? list?.default;
   return list?.providers.find((provider) => provider.key === wanted);
 }

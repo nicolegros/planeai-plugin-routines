@@ -17,7 +17,11 @@ export interface RoutinesUiContext {
       get<T extends Record<string, unknown>>(): Promise<T>;
       replace<T extends Record<string, unknown>>(settings: T): Promise<T>;
     };
-    data: { notify(message: string, kind?: "success" | "error" | "info" | "warning"): void };
+    data: {
+      notify(message: string, kind?: "success" | "error" | "info" | "warning"): void;
+      /** Called after each background check, and whenever another view changes the plugin's data. */
+      onChanged(listener: () => void): () => void;
+    };
   };
 }
 

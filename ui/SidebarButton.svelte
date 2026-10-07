@@ -1,11 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { REFRESH_MS } from "./format";
   import type { SidebarUiContext } from "./host";
   import { nextRunHint } from "./next-run";
 
   let { context }: { context: SidebarUiContext } = $props();
-
-  const REFRESH_MS = 30_000;
 
   let hint = $state<string | null>(null);
 

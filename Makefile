@@ -20,7 +20,7 @@ else ifeq ($(UNAME_S),Linux)
 endif
 BINARY ?= $(PLUGIN)
 
-.PHONY: build-ui build-sidecar check test package verify-package smoke conformance clean
+.PHONY: build-ui build-sidecar check lint fmt test package verify-package smoke conformance planeai-cli clean
 
 UI_ENTRIES := routines sidebar
 
@@ -35,6 +35,13 @@ build-sidecar:
 check:
 	pnpm exec tsc
 	pnpm exec svelte-check --fail-on-warnings
+
+lint:
+	pnpm lint
+	pnpm fmt:check
+
+fmt:
+	pnpm fmt
 
 test: check
 	pnpm exec vitest run
@@ -56,8 +63,11 @@ smoke: package
 	node scripts/smoke.mjs $(DIST) $(PLATFORM)
 
 # Full host contract checks, offline: PLANEAI_CLI points at a planeai-cli build of the host.
-conformance: package
+conformance: planeai-cli package
 	$(PLANEAI_CLI) plugin test --package $(DIST)
+
+planeai-cli:
+	@if [ -z "$(PLANEAI_CLI)" ]; then echo "Set PLANEAI_CLI to a planeai-cli build of the host: make conformance PLANEAI_CLI=/path/to/planeai-cli" >&2; exit 2; fi
 
 clean:
 	rm -rf build dist
