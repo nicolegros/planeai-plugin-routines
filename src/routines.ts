@@ -12,6 +12,19 @@ export const PLUGIN_VERSION = "0.0.0";
 
 const INVALID_PARAMS = -32602;
 const METHOD_NOT_FOUND = -32601;
+const NOT_GRANTED = -32003;
+
+/**
+ * The `host.tasks.create` refusals that retrying the same operation cannot fix, as the routine reports them.
+ * Every other failure, such as -32004 (temporarily unavailable) or -32603, is retried.
+ */
+const FINAL_REFUSALS: Record<number, (message: string) => string> = {
+  [INVALID_PARAMS]: (message) => message,
+  [NOT_GRANTED]: (message) =>
+    `PlaneAI did not grant Routines a capability it needs (${message}). Reinstall the plugin.`,
+  [METHOD_NOT_FOUND]: (message) =>
+    `This PlaneAI cannot create tasks for Routines (${message}). Update PlaneAI.`,
+};
 
 /**
  * `host.tasks.create` params; PlaneAI dedupes on (plugin, operation_id). With `start`, it also
@@ -169,9 +182,10 @@ export class RoutinesPlugin {
       };
     } catch (error) {
       // PlaneAI refused this occurrence for good: retrying it cannot succeed, the next one may.
-      if (error instanceof RpcError && error.code === INVALID_PARAMS) {
+      const refusal = error instanceof RpcError ? FINAL_REFUSALS[error.code] : undefined;
+      if (refusal) {
         return {
-          state: { ...state, last_fired: due.toISOString(), last_error: failure(error) },
+          state: { ...state, last_fired: due.toISOString(), last_error: refusal(failure(error)) },
           created: false,
         };
       }
