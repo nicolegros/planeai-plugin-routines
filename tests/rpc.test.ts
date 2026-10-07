@@ -1,5 +1,5 @@
 import { PassThrough } from "node:stream";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CANCELLED, JsonRpcPeer, RpcError } from "../src/rpc";
 
 function harness(handler: ConstructorParameters<typeof JsonRpcPeer>[2]) {
@@ -16,9 +16,9 @@ function harness(handler: ConstructorParameters<typeof JsonRpcPeer>[2]) {
     }
   });
   const peer = new JsonRpcPeer(input, output, handler);
-  void peer.serve();
+  const serving = peer.serve();
   const send = (frame: unknown) => input.write(`${JSON.stringify(frame)}\n`);
-  return { peer, frames, send };
+  return { peer, frames, send, serving, input };
 }
 
 const until = async (predicate: () => boolean) => {
@@ -41,6 +41,25 @@ describe("JsonRpcPeer", () => {
       id: "two",
       error: { code: -32602, message: "bad params" },
     });
+  });
+
+  it("ignores frames that are valid JSON but not objects, and keeps serving", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { frames, send, serving, input } = harness(async (method) => ({ ok: method }));
+    for (const frame of [null, [], 42, "text", true]) send(frame);
+    send({ jsonrpc: "2.0", id: 1, method: "ping" });
+    await until(() => frames.length === 1);
+    expect(frames).toEqual([{ jsonrpc: "2.0", id: 1, result: { ok: "ping" } }]);
+    expect(logged.mock.calls.map(([line]) => line)).toEqual([
+      "ignored JSON-RPC frame that is not an object: null",
+      "ignored JSON-RPC frame that is not an object: []",
+      "ignored JSON-RPC frame that is not an object: 42",
+      'ignored JSON-RPC frame that is not an object: "text"',
+      "ignored JSON-RPC frame that is not an object: true",
+    ]);
+    input.end();
+    await expect(serving).resolves.toBeUndefined();
+    logged.mockRestore();
   });
 
   it("acknowledges a cancel at once, even when the handler never finishes", async () => {
