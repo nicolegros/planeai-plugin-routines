@@ -6,10 +6,19 @@ import { StateStore } from "../src/state";
 
 const store = () => {
   const dir = mkdtempSync(join(tmpdir(), "routines-state-"));
-  return { dir, path: join(dir, "routines-state.json"), store: new StateStore(join(dir, "routines-state.json")) };
+  return {
+    dir,
+    path: join(dir, "routines-state.json"),
+    store: new StateStore(join(dir, "routines-state.json")),
+  };
 };
 
-const entry = { fingerprint: "0 9 * * 1", last_fired: "2026-10-05T13:00:00.000Z", last_task_key: "APP-12", last_error: null };
+const entry = {
+  fingerprint: "0 9 * * 1",
+  last_fired: "2026-10-05T13:00:00.000Z",
+  last_task_key: "APP-12",
+  last_error: null,
+};
 
 describe("StateStore", () => {
   it("starts empty and reads back what it saved, leaving no temporary file", () => {
@@ -23,7 +32,15 @@ describe("StateStore", () => {
 
   it("drops entries it cannot trust and survives a corrupt file", () => {
     const { path, store: state } = store();
-    writeFileSync(path, JSON.stringify({ r1: entry, r2: { ...entry, last_fired: "yesterday" }, r3: { fingerprint: 3 }, r4: "x" }));
+    writeFileSync(
+      path,
+      JSON.stringify({
+        r1: entry,
+        r2: { ...entry, last_fired: "yesterday" },
+        r3: { fingerprint: 3 },
+        r4: "x",
+      }),
+    );
     expect(state.load()).toEqual({ r1: entry });
     writeFileSync(path, "{not json");
     expect(state.load()).toEqual({});

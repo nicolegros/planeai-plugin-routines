@@ -20,7 +20,10 @@ if (!fs.existsSync(binaryPath)) {
   throw new Error(`staged binary does not exist: ${binaryPath}`);
 }
 for (const { id, entrypoint: ui } of manifest.ui_contributions ?? []) {
-  if (!fs.existsSync(path.join(packageRoot, ui))) throw new Error(`UI contribution ${id} has no staged ${ui}; add it to the Makefile's UI_ENTRIES`);
+  if (!fs.existsSync(path.join(packageRoot, ui)))
+    throw new Error(
+      `UI contribution ${id} has no staged ${ui}; add it to the Makefile's UI_ENTRIES`,
+    );
 }
 
 const expected = {
@@ -87,7 +90,9 @@ child.stdout.on("data", (chunk) => {
     if (response.error) throw new Error(`plugin.handshake returned ${response.error.message}`);
     for (const [field, value] of Object.entries(expected)) {
       if (response.result?.[field] !== value) {
-        throw new Error(`plugin.handshake ${field} (${response.result?.[field]}) does not match manifest (${value})`);
+        throw new Error(
+          `plugin.handshake ${field} (${response.result?.[field]}) does not match manifest (${value})`,
+        );
       }
     }
     finish();
@@ -97,7 +102,9 @@ child.stdout.on("data", (chunk) => {
 });
 child.on("exit", (code, signal) => {
   if (!settled) {
-    finish(new Error(`plugin exited before plugin.handshake completed (code ${code}, signal ${signal})`));
+    finish(
+      new Error(`plugin exited before plugin.handshake completed (code ${code}, signal ${signal})`),
+    );
   }
 });
 child.stdin.write(`${JSON.stringify(request)}\n`);

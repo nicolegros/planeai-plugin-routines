@@ -1,7 +1,11 @@
 import { parseRoutines } from "../src/routine";
 import { nextRun } from "../src/schedule";
 
-const time = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const time = new Intl.DateTimeFormat("en-US", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short" });
 const date = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 

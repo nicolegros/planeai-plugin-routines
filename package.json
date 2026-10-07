@@ -11,7 +11,6 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check"
   },
-  "packageManager": "pnpm@10.28.2",
   "dependencies": {
     "croner": "10.0.1"
   },
@@ -31,5 +30,6 @@
     "typescript": "7.0.2",
     "vite": "8.3.1",
     "vitest": "5.0.2"
-  }
+  },
+  "packageManager": "pnpm@10.28.2"
 }

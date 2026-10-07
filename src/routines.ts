@@ -68,7 +68,8 @@ function taskRequest(routine: Routine, at: Date, operation_id: string): TaskRequ
 }
 
 /** Occurrences fall on whole minutes, so their ids carry no milliseconds. */
-const occurrenceId = (routine: Routine, at: Date) => `routine:${routine.id}:${at.toISOString().replace(".000Z", "Z")}`;
+const occurrenceId = (routine: Routine, at: Date) =>
+  `routine:${routine.id}:${at.toISOString().replace(".000Z", "Z")}`;
 
 function failure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -133,21 +134,46 @@ export class RoutinesPlugin {
   }
 
   /** One routine's step: rebaseline, wait, or create the latest due occurrence. */
-  private async advance(routine: Routine, state: RoutineState | undefined, now: Date, signal?: AbortSignal): Promise<{ state: RoutineState; created: boolean }> {
+  private async advance(
+    routine: Routine,
+    state: RoutineState | undefined,
+    now: Date,
+    signal?: AbortSignal,
+  ): Promise<{ state: RoutineState; created: boolean }> {
     const fingerprint = toCron(routine.schedule);
     if (!state || state.fingerprint !== fingerprint) {
-      return { state: { fingerprint, last_fired: now.toISOString(), last_task_key: state?.last_task_key ?? null, last_error: null }, created: false };
+      return {
+        state: {
+          fingerprint,
+          last_fired: now.toISOString(),
+          last_task_key: state?.last_task_key ?? null,
+          last_error: null,
+        },
+        created: false,
+      };
     }
     const due = latestOccurrence(routine.schedule, new Date(state.last_fired), now);
     if (!due) return { state, created: false };
     try {
-      const { task, session, session_error } = await this.host.createTask(taskRequest(routine, due, occurrenceId(routine, due)), signal);
-      const last_error = session === "failed" ? `${task.key} was created, but its session could not start: ${session_error ?? "unknown error"}` : null;
-      return { state: { fingerprint, last_fired: due.toISOString(), last_task_key: task.key, last_error }, created: true };
+      const { task, session, session_error } = await this.host.createTask(
+        taskRequest(routine, due, occurrenceId(routine, due)),
+        signal,
+      );
+      const last_error =
+        session === "failed"
+          ? `${task.key} was created, but its session could not start: ${session_error ?? "unknown error"}`
+          : null;
+      return {
+        state: { fingerprint, last_fired: due.toISOString(), last_task_key: task.key, last_error },
+        created: true,
+      };
     } catch (error) {
       // PlaneAI refused this occurrence for good: retrying it cannot succeed, the next one may.
       if (error instanceof RpcError && error.code === INVALID_PARAMS) {
-        return { state: { ...state, last_fired: due.toISOString(), last_error: failure(error) }, created: false };
+        return {
+          state: { ...state, last_fired: due.toISOString(), last_error: failure(error) },
+          created: false,
+        };
       }
       // last_fired stays, so the next tick retries the same operation id.
       return { state: { ...state, last_error: failure(error) }, created: false };
@@ -164,20 +190,32 @@ export class RoutinesPlugin {
           const known = routine.enabled ? state[routine.id] : undefined;
           return {
             id: routine.id,
-            next_run: routine.enabled ? (nextRun(routine.schedule, now)?.toISOString() ?? null) : null,
+            next_run: routine.enabled
+              ? (nextRun(routine.schedule, now)?.toISOString() ?? null)
+              : null,
             last_fired: known?.last_fired ?? null,
             last_task_key: known?.last_task_key ?? null,
             error: known?.last_error ?? null,
           };
         }),
-        ...[...problems].map(([id, error]) => ({ id, next_run: null, last_fired: null, last_task_key: null, error })),
+        ...[...problems].map(([id, error]) => ({
+          id,
+          next_run: null,
+          last_fired: null,
+          last_task_key: null,
+          error,
+        })),
       ],
     };
   }
 
   private async runNow(params: unknown, signal?: AbortSignal): Promise<TaskCreation> {
-    const id = typeof params === "object" && params !== null ? (params as Record<string, unknown>).id : undefined;
-    if (typeof id !== "string" || !id) throw new RpcError(INVALID_PARAMS, "id must be a nonempty string");
+    const id =
+      typeof params === "object" && params !== null
+        ? (params as Record<string, unknown>).id
+        : undefined;
+    if (typeof id !== "string" || !id)
+      throw new RpcError(INVALID_PARAMS, "id must be a nonempty string");
     const { routines, problems } = parseRoutines(await this.host.settings(signal));
     const problem = problems.get(id);
     if (problem) throw new RpcError(INVALID_PARAMS, problem);
@@ -185,7 +223,10 @@ export class RoutinesPlugin {
     if (!routine) throw new RpcError(INVALID_PARAMS, "This routine no longer exists.");
     const now = this.now();
     try {
-      return await this.host.createTask(taskRequest(routine, now, `routine:${id}:manual:${now.toISOString()}`), signal);
+      return await this.host.createTask(
+        taskRequest(routine, now, `routine:${id}:manual:${now.toISOString()}`),
+        signal,
+      );
     } catch (error) {
       throw new RpcError(error instanceof RpcError ? error.code : -32000, failure(error));
     }

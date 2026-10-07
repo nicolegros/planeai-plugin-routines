@@ -10,9 +10,15 @@ const month = new Intl.DateTimeFormat("en-US", { month: "long" });
 
 /** ISO 8601 week number in local time: the week belongs to the year of its Thursday. */
 function isoWeek(at: Date): number {
-  const thursday = new Date(at.getFullYear(), at.getMonth(), at.getDate() + 3 - ((at.getDay() + 6) % 7));
+  const thursday = new Date(
+    at.getFullYear(),
+    at.getMonth(),
+    at.getDate() + 3 - ((at.getDay() + 6) % 7),
+  );
   // Rounded, since a daylight saving change makes a local day 23 or 25 hours long.
-  const dayOfYear = Math.round((thursday.getTime() - new Date(thursday.getFullYear(), 0, 1).getTime()) / 86_400_000);
+  const dayOfYear = Math.round(
+    (thursday.getTime() - new Date(thursday.getFullYear(), 0, 1).getTime()) / 86_400_000,
+  );
   return Math.floor(dayOfYear / 7) + 1;
 }
 
@@ -30,5 +36,7 @@ const TABLE: Record<string, (context: TemplateContext) => string> = {
 export const PLACEHOLDERS = Object.keys(TABLE);
 
 export function render(template: string, context: TemplateContext): string {
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, name: string) => (Object.hasOwn(TABLE, name) ? TABLE[name](context) : match));
+  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, name: string) =>
+    Object.hasOwn(TABLE, name) ? TABLE[name](context) : match,
+  );
 }

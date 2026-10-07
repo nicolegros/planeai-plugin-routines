@@ -1,4 +1,12 @@
-import { DEFAULT_START, normalizeTags, WEEKDAYS, type Priority, type Routine, type SessionStart, type Weekday } from "../src/routine";
+import {
+  DEFAULT_START,
+  normalizeTags,
+  WEEKDAYS,
+  type Priority,
+  type Routine,
+  type SessionStart,
+  type Weekday,
+} from "../src/routine";
 
 /** The editor's schedule choices, each mapped onto one of the three schedule kinds. */
 export const PRESETS = [
@@ -11,7 +19,14 @@ export const PRESETS = [
 export type Preset = (typeof PRESETS)[number]["id"];
 
 /** PlaneAI's labels: a higher number is more urgent. */
-export const PRIORITY_LABELS: Record<Priority, string> = { 0: "None", 1: "Lowest", 2: "Low", 3: "Medium", 4: "High", 5: "Highest" };
+export const PRIORITY_LABELS: Record<Priority, string> = {
+  0: "None",
+  1: "Lowest",
+  2: "Low",
+  3: "Medium",
+  4: "High",
+  5: "Highest",
+};
 
 const WORKWEEK: Weekday[] = ["mon", "tue", "wed", "thu", "fri"];
 
@@ -57,7 +72,11 @@ function presetOf(routine: Routine): Preset {
   const { schedule } = routine;
   if (schedule.kind !== "weekly") return schedule.kind;
   if (schedule.weekdays.length === WEEKDAYS.length) return "daily";
-  if (schedule.weekdays.length === WORKWEEK.length && WORKWEEK.every((day) => schedule.weekdays.includes(day))) return "weekdays";
+  if (
+    schedule.weekdays.length === WORKWEEK.length &&
+    WORKWEEK.every((day) => schedule.weekdays.includes(day))
+  )
+    return "weekdays";
   return "days";
 }
 
@@ -86,7 +105,11 @@ export function toSchedule(draft: Draft): unknown {
     case "weekdays":
       return { kind: "weekly", time: draft.time, weekdays: [...WORKWEEK] };
     case "days":
-      return { kind: "weekly", time: draft.time, weekdays: WEEKDAYS.filter((day) => draft.weekdays.includes(day)) };
+      return {
+        kind: "weekly",
+        time: draft.time,
+        weekdays: WEEKDAYS.filter((day) => draft.weekdays.includes(day)),
+      };
     case "monthly":
       return { kind: "monthly", time: draft.time, day: draft.day };
     case "cron":

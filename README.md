@@ -71,17 +71,17 @@ Tests run in the `America/Toronto` time zone, set in `vite.config.ts`, so their 
 
 ### Layout
 
-| Path | Role |
-| --- | --- |
-| `src/main.ts` | Sidecar entrypoint: JSON-RPC over stdio and the PlaneAI callbacks. |
-| `src/rpc.ts` | Newline-framed JSON-RPC 2.0 peer with `$/cancelRequest`, requests to the host, and the 64 KiB frame limit. |
-| `src/routines.ts` | The plugin: `routines.tick`, `routines.status` and `routines.runNow`. |
-| `src/routine.ts` | The routine types and the parser for the settings document, with one problem per malformed routine. |
-| `src/schedule.ts` | Schedules compiled to cron, their descriptions, next runs and latest due occurrence. |
-| `src/template.ts` | Placeholders for task titles and descriptions. |
-| `src/state.ts` | The sidecar's run state file, replaced atomically. |
-| `ui/` | The Svelte 5 dialog and sidebar button, each built into one self-contained ESM bundle, `ui/routines.js` and `ui/sidebar.js`. |
-| `scripts/smoke.mjs` | Plays PlaneAI over stdin and stdout against the staged binary. |
+| Path                | Role                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`       | Sidecar entrypoint: JSON-RPC over stdio and the PlaneAI callbacks.                                                           |
+| `src/rpc.ts`        | Newline-framed JSON-RPC 2.0 peer with `$/cancelRequest`, requests to the host, and the 64 KiB frame limit.                   |
+| `src/routines.ts`   | The plugin: `routines.tick`, `routines.status` and `routines.runNow`.                                                        |
+| `src/routine.ts`    | The routine types and the parser for the settings document, with one problem per malformed routine.                          |
+| `src/schedule.ts`   | Schedules compiled to cron, their descriptions, next runs and latest due occurrence.                                         |
+| `src/template.ts`   | Placeholders for task titles and descriptions.                                                                               |
+| `src/state.ts`      | The sidecar's run state file, replaced atomically.                                                                           |
+| `ui/`               | The Svelte 5 dialog and sidebar button, each built into one self-contained ESM bundle, `ui/routines.js` and `ui/sidebar.js`. |
+| `scripts/smoke.mjs` | Plays PlaneAI over stdin and stdout against the staged binary.                                                               |
 
 ## Release
 

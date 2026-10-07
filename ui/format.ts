@@ -7,7 +7,14 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["minute", 60],
 ];
 const relativeFormat = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
-const absoluteFormat = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const absoluteFormat = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
 /** "in 3 hours", "tomorrow", "2 days ago". */
 export function relative(target: Date, now: Date): string {

@@ -12,7 +12,8 @@ export interface RoutineState {
 
 export type RunState = Record<string, RoutineState>;
 
-const nullableText = (value: unknown): value is string | null => value === null || typeof value === "string";
+const nullableText = (value: unknown): value is string | null =>
+  value === null || typeof value === "string";
 
 function isRoutineState(value: unknown): value is RoutineState {
   if (typeof value !== "object" || value === null) return false;
@@ -38,11 +39,16 @@ export class StateStore {
     try {
       raw = JSON.parse(readFileSync(this.path, "utf8"));
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error(`ignored unreadable run state: ${String(error)}`);
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+        console.error(`ignored unreadable run state: ${String(error)}`);
       return {};
     }
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
-    return Object.fromEntries(Object.entries(raw).filter((entry): entry is [string, RoutineState] => isRoutineState(entry[1])));
+    return Object.fromEntries(
+      Object.entries(raw).filter((entry): entry is [string, RoutineState] =>
+        isRoutineState(entry[1]),
+      ),
+    );
   }
 
   save(state: RunState): void {

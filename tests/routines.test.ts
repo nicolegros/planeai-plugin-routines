@@ -14,7 +14,12 @@ const retro = (overrides: Record<string, unknown> = {}) => ({
   enabled: true,
   project_path: "/work/app",
   schedule: { kind: "weekly", time: "09:00", weekdays: ["mon", "tue", "wed", "thu", "fri"] },
-  task: { title: "Retro {{date}}", description: "{{weekday}} at {{time}}", priority: 3, tags: ["ritual"] },
+  task: {
+    title: "Retro {{date}}",
+    description: "{{weekday}} at {{time}}",
+    priority: 3,
+    tags: ["ritual"],
+  },
   ...overrides,
 });
 
@@ -37,7 +42,10 @@ function harness(routines: unknown[] = [retro()]) {
       world.beforeCreate();
       if (world.failure) throw world.failure;
       created.push(request);
-      return { task: { key: `APP-${created.length}`, title: request.title }, ...(request.start ? world.session : {}) };
+      return {
+        task: { key: `APP-${created.length}`, title: request.title },
+        ...(request.start ? world.session : {}),
+      };
     },
   };
   const plugin = new RoutinesPlugin(host, new StateStore(statePath), () => world.now);
@@ -49,11 +57,18 @@ function harness(routines: unknown[] = [retro()]) {
 
 describe("RoutinesPlugin", () => {
   it("asks for the capabilities it uses, including starting sessions", () => {
-    expect(manifest.capabilities).toEqual(["settings", "projects.read", "tasks.create", "sessions.start"]);
+    expect(manifest.capabilities).toEqual([
+      "settings",
+      "projects.read",
+      "tasks.create",
+      "sessions.start",
+    ]);
   });
 
   it("handshakes with the identity the manifest declares", async () => {
-    const result = await harness().plugin.handle("plugin.handshake", { host_api_version: manifest.host_api_version });
+    const result = await harness().plugin.handle("plugin.handshake", {
+      host_api_version: manifest.host_api_version,
+    });
     expect(result).toEqual({
       plugin_id: manifest.id,
       plugin_name: manifest.name,
@@ -68,7 +83,14 @@ describe("RoutinesPlugin", () => {
     // 08:00 in Toronto; the 09:00 of yesterday is in the past.
     await expect(tick()).resolves.toEqual({ created: 0 });
     expect(created).toEqual([]);
-    expect(state()).toEqual({ r1: { fingerprint: "0 9 * * 1,2,3,4,5", last_fired: "2026-10-06T12:00:00.000Z", last_task_key: null, last_error: null } });
+    expect(state()).toEqual({
+      r1: {
+        fingerprint: "0 9 * * 1,2,3,4,5",
+        last_fired: "2026-10-06T12:00:00.000Z",
+        last_task_key: null,
+        last_error: null,
+      },
+    });
   });
 
   it("creates one task at the occurrence, rendered at the occurrence", async () => {
@@ -89,13 +111,29 @@ describe("RoutinesPlugin", () => {
         start: { provider: null, use_worktree: true, auto_approve: true },
       },
     ]);
-    expect(state().r1).toEqual({ fingerprint: "0 9 * * 1,2,3,4,5", last_fired: "2026-10-06T13:00:00.000Z", last_task_key: "APP-1", last_error: null });
+    expect(state().r1).toEqual({
+      fingerprint: "0 9 * * 1,2,3,4,5",
+      last_fired: "2026-10-06T13:00:00.000Z",
+      last_task_key: "APP-1",
+      last_error: null,
+    });
   });
 
   it("asks PlaneAI to start the routine's session, or leaves start out when the routine does not start one", async () => {
     const { tick, at, created } = harness([
-      retro({ task: { title: "Review", start: { enabled: true, provider: "codex", use_worktree: false, auto_approve: false } } }),
-      retro({ id: "r2", task: { title: "Plan", start: { enabled: false, provider: "codex", use_worktree: false, auto_approve: false } } }),
+      retro({
+        task: {
+          title: "Review",
+          start: { enabled: true, provider: "codex", use_worktree: false, auto_approve: false },
+        },
+      }),
+      retro({
+        id: "r2",
+        task: {
+          title: "Plan",
+          start: { enabled: false, provider: "codex", use_worktree: false, auto_approve: false },
+        },
+      }),
     ]);
     await tick();
     at("2026-10-06T13:00:10Z");
@@ -110,7 +148,14 @@ describe("RoutinesPlugin", () => {
         tags: [],
         start: { provider: "codex", use_worktree: false, auto_approve: false },
       },
-      { project_path: "/work/app", operation_id: "routine:r2:2026-10-06T13:00:00Z", title: "Plan", description: "", priority: 0, tags: [] },
+      {
+        project_path: "/work/app",
+        operation_id: "routine:r2:2026-10-06T13:00:00Z",
+        title: "Plan",
+        description: "",
+        priority: 0,
+        tags: [],
+      },
     ]);
   });
 
@@ -119,7 +164,9 @@ describe("RoutinesPlugin", () => {
     await tick();
     at("2026-10-19T20:00:00Z");
     await expect(tick()).resolves.toEqual({ created: 1 });
-    expect(created.map((task) => [task.operation_id, task.title])).toEqual([["routine:r1:2026-10-19T13:00:00Z", "Retro 2026-10-19"]]);
+    expect(created.map((task) => [task.operation_id, task.title])).toEqual([
+      ["routine:r1:2026-10-19T13:00:00Z", "Retro 2026-10-19"],
+    ]);
   });
 
   it("records a failure and retries the same operation on the next tick", async () => {
@@ -128,8 +175,13 @@ describe("RoutinesPlugin", () => {
     at("2026-10-06T13:00:10Z");
     world.failure = new RpcError(-32603, "database is locked");
     await expect(tick()).resolves.toEqual({ created: 0 });
-    expect(state().r1).toMatchObject({ last_fired: "2026-10-06T12:00:00.000Z", last_error: "database is locked" });
-    await expect(plugin.handle("routines.status", null)).resolves.toMatchObject({ routines: [{ id: "r1", error: "database is locked" }] });
+    expect(state().r1).toMatchObject({
+      last_fired: "2026-10-06T12:00:00.000Z",
+      last_error: "database is locked",
+    });
+    await expect(plugin.handle("routines.status", null)).resolves.toMatchObject({
+      routines: [{ id: "r1", error: "database is locked" }],
+    });
     world.failure = null;
     at("2026-10-06T13:00:40Z");
     await expect(tick()).resolves.toEqual({ created: 1 });
@@ -145,7 +197,11 @@ describe("RoutinesPlugin", () => {
     let attempts = 0;
     world.beforeCreate = () => void attempts++;
     await expect(tick()).resolves.toEqual({ created: 0 });
-    expect(state().r1).toMatchObject({ last_fired: "2026-10-06T13:00:00.000Z", last_task_key: null, last_error: "project was not found or is hidden" });
+    expect(state().r1).toMatchObject({
+      last_fired: "2026-10-06T13:00:00.000Z",
+      last_task_key: null,
+      last_error: "project was not found or is hidden",
+    });
     at("2026-10-06T13:00:40Z");
     await tick();
     expect(attempts).toBe(1);
@@ -160,11 +216,22 @@ describe("RoutinesPlugin", () => {
   it("records a session PlaneAI could not start on the task it created", async () => {
     const { tick, at, world, state } = harness();
     world.session = { session: "failed", session_error: "Unknown provider: claude" };
-    world.settings.routines = [retro({ task: { ...retro().task, start: { enabled: true, provider: "claude", use_worktree: true, auto_approve: true } } })];
+    world.settings.routines = [
+      retro({
+        task: {
+          ...retro().task,
+          start: { enabled: true, provider: "claude", use_worktree: true, auto_approve: true },
+        },
+      }),
+    ];
     await tick();
     at("2026-10-06T13:00:10Z");
     await expect(tick()).resolves.toEqual({ created: 1 });
-    expect(state().r1).toMatchObject({ last_fired: "2026-10-06T13:00:00.000Z", last_task_key: "APP-1", last_error: "APP-1 was created, but its session could not start: Unknown provider: claude" });
+    expect(state().r1).toMatchObject({
+      last_fired: "2026-10-06T13:00:00.000Z",
+      last_task_key: "APP-1",
+      last_error: "APP-1 was created, but its session could not start: Unknown provider: claude",
+    });
   });
 
   it("never fires a disabled routine, and re-enabling it does not fire a stale occurrence", async () => {
@@ -207,10 +274,17 @@ describe("RoutinesPlugin", () => {
     const { tick, at, world, created, state } = harness();
     await tick();
     at("2026-10-06T15:00:00Z");
-    world.settings = { routines: [retro({ schedule: { kind: "weekly", time: "10:00", weekdays: ["tue"] } })] };
+    world.settings = {
+      routines: [retro({ schedule: { kind: "weekly", time: "10:00", weekdays: ["tue"] } })],
+    };
     await expect(tick()).resolves.toEqual({ created: 0 });
     expect(created).toEqual([]);
-    expect(state().r1).toEqual({ fingerprint: "0 10 * * 2", last_fired: "2026-10-06T15:00:00.000Z", last_task_key: null, last_error: null });
+    expect(state().r1).toEqual({
+      fingerprint: "0 10 * * 2",
+      last_fired: "2026-10-06T15:00:00.000Z",
+      last_task_key: null,
+      last_error: null,
+    });
   });
 
   it("prunes the state of deleted and invalid routines", async () => {
@@ -223,7 +297,11 @@ describe("RoutinesPlugin", () => {
   });
 
   it("reports next runs, last tasks and problems without writing", async () => {
-    const { plugin, tick, at, state } = harness([retro(), retro({ id: "r2", enabled: false }), retro({ id: "r3", task: { title: "" } })]);
+    const { plugin, tick, at, state } = harness([
+      retro(),
+      retro({ id: "r2", enabled: false }),
+      retro({ id: "r3", task: { title: "" } }),
+    ]);
     await tick();
     at("2026-10-06T13:00:10Z");
     await tick();
@@ -231,9 +309,21 @@ describe("RoutinesPlugin", () => {
     at("2026-10-06T13:30:00Z");
     await expect(plugin.handle("routines.status", null)).resolves.toEqual({
       routines: [
-        { id: "r1", next_run: "2026-10-07T13:00:00.000Z", last_fired: "2026-10-06T13:00:00.000Z", last_task_key: "APP-1", error: null },
+        {
+          id: "r1",
+          next_run: "2026-10-07T13:00:00.000Z",
+          last_fired: "2026-10-06T13:00:00.000Z",
+          last_task_key: "APP-1",
+          error: null,
+        },
         { id: "r2", next_run: null, last_fired: null, last_task_key: null, error: null },
-        { id: "r3", next_run: null, last_fired: null, last_task_key: null, error: "Enter a task title." },
+        {
+          id: "r3",
+          next_run: null,
+          last_fired: null,
+          last_task_key: null,
+          error: "Enter a task title.",
+        },
       ],
     });
     expect(state()).toEqual(before);
@@ -244,7 +334,10 @@ describe("RoutinesPlugin", () => {
     await tick();
     world.settings = { routines: [retro({ enabled: false })] };
     at("2026-10-06T15:30:12.345Z");
-    await expect(plugin.handle("routines.runNow", { id: "r1" })).resolves.toEqual({ task: { key: "APP-1", title: "Retro 2026-10-06" }, session: "starting" });
+    await expect(plugin.handle("routines.runNow", { id: "r1" })).resolves.toEqual({
+      task: { key: "APP-1", title: "Retro 2026-10-06" },
+      session: "starting",
+    });
     expect(created).toEqual([
       {
         project_path: "/work/app",
@@ -261,8 +354,12 @@ describe("RoutinesPlugin", () => {
 
   it("refuses to run a routine that is missing or invalid", async () => {
     const { plugin } = harness([retro({ id: "r3", task: { title: "" } })]);
-    await expect(plugin.handle("routines.runNow", { id: "nope" })).rejects.toThrow("This routine no longer exists.");
-    await expect(plugin.handle("routines.runNow", { id: "r3" })).rejects.toThrow("Enter a task title.");
+    await expect(plugin.handle("routines.runNow", { id: "nope" })).rejects.toThrow(
+      "This routine no longer exists.",
+    );
+    await expect(plugin.handle("routines.runNow", { id: "r3" })).rejects.toThrow(
+      "Enter a task title.",
+    );
     await expect(plugin.handle("routines.runNow", {})).rejects.toMatchObject({ code: -32602 });
   });
 });
