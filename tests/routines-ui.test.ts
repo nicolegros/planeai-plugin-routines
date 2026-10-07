@@ -362,6 +362,41 @@ describe("Routines dialog", () => {
     expect(call.mock.calls.slice(statusCalls)).toEqual([["routines.status"]]);
   });
 
+  it("points every field's description at an element that exists, whatever the schedule", async () => {
+    await open(harness({ routines: [] }).context);
+    button("Create your first routine").click();
+    flushSync();
+    const dangling = () =>
+      [...document.querySelectorAll("[aria-describedby]")].flatMap((element) =>
+        element
+          .getAttribute("aria-describedby")!
+          .split(" ")
+          .filter((id) => !document.getElementById(id)),
+      );
+    for (const preset of ["weekdays", "days", "monthly", "cron"]) {
+      choose(field<HTMLSelectElement>("Repeats"), preset);
+      expect([preset, dangling()]).toEqual([preset, []]);
+    }
+    choose(field<HTMLSelectElement>("Repeats"), "monthly");
+    type(field("Day of month"), "31");
+    expect(field("Day of month").getAttribute("aria-describedby")).toBe("day-hint");
+    expect(document.getElementById("day-hint")?.textContent).toBe(
+      "Months without day 31 are skipped.",
+    );
+  });
+
+  it("returns focus to Delete when the delete confirmation is cancelled", async () => {
+    const { context, replaced } = harness({ routines: [retro] });
+    await open(context);
+    button("Delete Weekly retro").click();
+    await settle();
+    expect(document.activeElement).toBe(button("Delete"));
+    button("Cancel").click();
+    await settle();
+    expect(document.activeElement).toBe(button("Delete Weekly retro"));
+    expect(replaced).toEqual([]);
+  });
+
   it("shows the next run, the last task and errors from the sidecar", async () => {
     const { context } = harness(
       {
