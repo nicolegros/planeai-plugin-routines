@@ -22,6 +22,7 @@ jobs:
       - name: Install pnpm
         run: npm install -g pnpm@10.28.2
       - run: pnpm install --frozen-lockfile
+      - run: make lint
       - run: make test
       - run: make verify-package
       - run: make smoke

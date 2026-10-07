@@ -20,7 +20,7 @@ else ifeq ($(UNAME_S),Linux)
 endif
 BINARY ?= $(PLUGIN)
 
-.PHONY: build-ui build-sidecar check test package verify-package smoke conformance clean
+.PHONY: build-ui build-sidecar check lint fmt test package verify-package smoke conformance clean
 
 UI_ENTRIES := routines sidebar
 
@@ -35,6 +35,13 @@ build-sidecar:
 check:
 	pnpm exec tsc
 	pnpm exec svelte-check --fail-on-warnings
+
+lint:
+	pnpm lint
+	pnpm fmt:check
+
+fmt:
+	pnpm fmt
 
 test: check
 	pnpm exec vitest run
