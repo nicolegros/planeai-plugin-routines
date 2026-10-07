@@ -169,7 +169,7 @@
       {#if draft.preset === "monthly"}
         <label class="field">
           <span class="label">Day of month</span>
-          <input type="number" min="1" max="31" step="1" bind:value={draft.day} onblur={touch("day")} aria-invalid={!!shown("day")} aria-describedby={shown("day") ? "problem-day" : "day-hint"} />
+          <input type="number" min="1" max="31" step="1" bind:value={draft.day} onblur={touch("day")} aria-invalid={!!shown("day")} aria-describedby={shown("day") ? "problem-day" : (draft.day ?? 0) > 28 ? "day-hint" : undefined} />
           {#if shown("day")}
             {@render problem("day")}
           {:else if (draft.day ?? 0) > 28}
