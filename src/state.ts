@@ -1,4 +1,13 @@
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fsyncSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeSync,
+} from "node:fs";
+import { dirname } from "node:path";
 
 /** What the sidecar remembers about one routine between ticks. */
 export interface RoutineState {
@@ -51,9 +60,61 @@ export class StateStore {
     );
   }
 
+  /** Durable once it returns: the file is flushed before it replaces the old one, and the directory after. */
   save(state: RunState): void {
     const temporary = `${this.path}.${process.pid}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(state, null, 2)}\n`);
-    renameSync(temporary, this.path);
+    try {
+      const file = openSync(temporary, "w");
+      try {
+        writeSync(file, `${JSON.stringify(state, null, 2)}\n`);
+        fsyncSync(file);
+      } finally {
+        closeSync(file);
+      }
+      replaceFile(temporary, this.path);
+    } catch (error) {
+      rmSync(temporary, { force: true });
+      throw error;
+    }
+    flushDirectory(dirname(this.path));
+  }
+}
+
+/** Windows refuses a replace while another process, such as an antivirus scan, briefly holds the file open. */
+const WINDOWS_TRANSIENT = new Set(["EPERM", "EACCES", "EBUSY"]);
+const REPLACE_ATTEMPTS = 5;
+
+export function replaceFile(
+  from: string,
+  to: string,
+  {
+    rename = renameSync as (from: string, to: string) => void,
+    transient = process.platform === "win32" ? WINDOWS_TRANSIENT : new Set<string>(),
+  } = {},
+): void {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (attempt === REPLACE_ATTEMPTS || !transient.has(code)) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, attempt * 20);
+    }
+  }
+}
+
+/** Makes the rename itself durable; Windows cannot open a directory for this, and NTFS journals the rename. */
+function flushDirectory(directory: string): void {
+  if (process.platform === "win32") return;
+  try {
+    const handle = openSync(directory, "r");
+    try {
+      fsyncSync(handle);
+    } finally {
+      closeSync(handle);
+    }
+  } catch (error) {
+    console.error(`could not flush ${directory}: ${String(error)}`);
   }
 }
