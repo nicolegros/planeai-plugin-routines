@@ -323,20 +323,28 @@ describe("Routines dialog", () => {
     expect(button("Edit Half").disabled).toBe(true);
   });
 
-  it("runs a routine now and reports the created task", async () => {
+  it("runs a routine now, retrying a failed run as the same action and the next click as a new one", async () => {
     const { context, call, notify } = harness({ routines: [retro] });
     await open(context);
-    button("Run Weekly retro now").click();
-    await settle();
-    expect(call).toHaveBeenCalledWith("routines.runNow", { id: "r1" });
-    expect(notify).toHaveBeenCalledWith("Created APP-7. Its session is starting.", "success");
-    call.mockRejectedValueOnce(new Error("project was not found or is hidden"));
+    call.mockRejectedValueOnce(new Error("request cancelled"));
     button("Run Weekly retro now").click();
     await settle();
     expect(notify).toHaveBeenLastCalledWith(
-      "Could not run Weekly retro: project was not found or is hidden",
+      "Could not run Weekly retro: request cancelled",
       "error",
     );
+    button("Run Weekly retro now").click();
+    await settle();
+    expect(notify).toHaveBeenLastCalledWith("Created APP-7. Its session is starting.", "success");
+    button("Run Weekly retro now").click();
+    await settle();
+    const [failed, retried, next] = call.mock.calls
+      .filter(([method]) => method === "routines.runNow")
+      .map(([, params]) => params as { id: string; action_id: string });
+    expect(failed).toEqual({ id: "r1", action_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    expect(retried).toEqual(failed);
+    expect(next).toEqual({ id: "r1", action_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    expect(next.action_id).not.toBe(failed.action_id);
   });
 
   it("returns focus to the empty state's call to action when the first routine is cancelled", async () => {
