@@ -32,10 +32,11 @@ export interface CreatedTask {
   [field: string]: unknown;
 }
 
-/** `session` is set only when the request asked for a start. */
+/** `session` is set only when the request asked for a start; `session_error` when it failed. */
 export interface TaskCreation {
   task: CreatedTask;
-  session?: "starting" | "exists";
+  session?: "starting" | "exists" | "failed";
+  session_error?: string;
 }
 
 /** The PlaneAI callbacks the plugin makes, each within the host request whose signal it is given. */
@@ -140,9 +141,14 @@ export class RoutinesPlugin {
     const due = latestOccurrence(routine.schedule, new Date(state.last_fired), now);
     if (!due) return { state, created: false };
     try {
-      const { task } = await this.host.createTask(taskRequest(routine, due, occurrenceId(routine, due)), signal);
-      return { state: { fingerprint, last_fired: due.toISOString(), last_task_key: task.key, last_error: null }, created: true };
+      const { task, session, session_error } = await this.host.createTask(taskRequest(routine, due, occurrenceId(routine, due)), signal);
+      const last_error = session === "failed" ? `${task.key} was created, but its session could not start: ${session_error ?? "unknown error"}` : null;
+      return { state: { fingerprint, last_fired: due.toISOString(), last_task_key: task.key, last_error }, created: true };
     } catch (error) {
+      // PlaneAI refused this occurrence for good: retrying it cannot succeed, the next one may.
+      if (error instanceof RpcError && error.code === INVALID_PARAMS) {
+        return { state: { ...state, last_fired: due.toISOString(), last_error: failure(error) }, created: false };
+      }
       // last_fired stays, so the next tick retries the same operation id.
       return { state: { ...state, last_error: failure(error) }, created: false };
     }

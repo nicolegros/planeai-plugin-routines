@@ -22,8 +22,9 @@ const plugin = new RoutinesPlugin(
       const created = object(await peer.request("host.tasks.create", request, signal), "a task");
       const task = object(created.task, "a task");
       if (typeof task.key !== "string") throw new RpcError(-32603, "PlaneAI returned a task without a key");
-      const session = created.session === "starting" || created.session === "exists" ? created.session : undefined;
-      return { task: task as CreatedTask, ...(session ? { session } : {}) };
+      const session = created.session === "starting" || created.session === "exists" || created.session === "failed" ? created.session : undefined;
+      const session_error = typeof created.session_error === "string" ? created.session_error : undefined;
+      return { task: task as CreatedTask, ...(session ? { session } : {}), ...(session_error ? { session_error } : {}) };
     },
   },
   new StateStore(join(dataDir, "routines-state.json")),

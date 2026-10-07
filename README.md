@@ -30,7 +30,7 @@ The plugin asks for the `settings`, `projects.read`, `tasks.create` and `session
   It picks the provider (PlaneAI's default unless one is chosen), whether the session gets a worktree, and auto-approve, which is off for providers that do not support it.
   The branch, session name and prompt follow PlaneAI's task templates, and the task moves to In Progress.
   Routines saved before this option existed start a session too.
-  PlaneAI starts the session in the background, at most once per task, and reports a failed start itself; the routine only shows an error when PlaneAI refuses the request outright.
+  PlaneAI starts the session in the background, at most once per task, and reports a failed start itself; the routine also shows it once PlaneAI answers a retried request with the failure.
   With PlaneAI's `local` session backend, the agent only starts when its terminal is opened, so a routine's session waits until you open it.
 - **Checking.** PlaneAI calls the plugin every 30 seconds while it is enabled, and right after the routines are saved.
   Set `tick_interval_ms` in the plugin's settings to change the interval.
@@ -38,6 +38,7 @@ The plugin asks for the `settings`, `projects.read`, `tasks.create` and `session
 - **No surprise tasks.** A new, re-enabled or rescheduled routine starts counting from that moment, so it never creates a task for a time that already passed.
 - **Idempotency.** Each task is created with an operation id made of the routine and its due time, and PlaneAI creates at most one task per operation id.
   A crash or a failed attempt retries the same operation, so it never creates a duplicate.
+  A request PlaneAI refuses (JSON-RPC `-32602`, such as a hidden project) cannot succeed on retry: the routine shows the error, skips that occurrence and fires the next one.
   **Run now** uses its own operation id and does not move the schedule.
 - **Errors.** A failed creation, such as a project that was removed or hidden, is shown on the routine and retried on the next check.
   A routine whose settings are malformed shows why and never stops the others.
