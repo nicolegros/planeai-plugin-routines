@@ -83,12 +83,18 @@ export class JsonRpcPeer {
       result?: unknown;
       error?: { code?: unknown; message?: unknown };
     };
+    let parsed: unknown;
     try {
-      message = JSON.parse(line);
+      parsed = JSON.parse(line);
     } catch (error) {
       console.error(`ignored malformed JSON-RPC frame: ${String(error)}`);
       return;
     }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      console.error(`ignored JSON-RPC frame that is not an object: ${line.trim()}`);
+      return;
+    }
+    message = parsed;
     if (message.method === undefined) {
       const pending = typeof message.id === "string" ? this.outgoing.get(message.id) : undefined;
       if (!pending) return;
