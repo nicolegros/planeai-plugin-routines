@@ -6,7 +6,7 @@ import { render } from "./template";
 
 export const PLUGIN_ID = "routines";
 export const PLUGIN_NAME = "Routines";
-export const HOST_API_VERSION = "planeai.plugin-host.v1";
+export const HOST_API_VERSION = "planeai.plugin-host.v4";
 /** Replaced by scripts/inject-release-version.mjs in release builds. */
 export const PLUGIN_VERSION = "0.0.0";
 

@@ -12,9 +12,8 @@ The list shows when each routine runs next, whether it starts a session, the las
 
 ## Requirements
 
-- A PlaneAI build whose plugin host offers `host.tasks.create` for top-level tasks, with its `start` option, and the `sessions.start` capability.
-  A PlaneAI that does not know `sessions.start` refuses to install the plugin.
-- A PlaneAI build that offers the `dialog` UI placement; an older one refuses the manifest.
+- A PlaneAI build serving plugin host API `planeai.plugin-host.v4`, which adds top-level `host.tasks.create` with its `start` option, the `sessions.start` capability and the `dialog` UI placement.
+  An older PlaneAI refuses to install the plugin with "plugin manifest requires an unsupported host API version".
 
 The plugin asks for the `settings`, `projects.read`, `tasks.create` and `sessions.start` capabilities.
 
