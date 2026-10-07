@@ -17,6 +17,7 @@
     providers,
     providersFailure,
     onRetryProviders,
+    saving,
     onSave,
     onCancel,
   }: {
@@ -28,6 +29,8 @@
     providers: SessionProviders | null;
     providersFailure: string | null;
     onRetryProviders: () => void;
+    /** A save is in flight; the editor stays open until it settles. */
+    saving: boolean;
     onSave: (draft: Draft) => void;
     onCancel: () => void;
   } = $props();
@@ -294,7 +297,7 @@
     {/if}
     <div class="buttons">
       <button type="button" onclick={onCancel}>Cancel</button>
-      <button type="submit" class="primary" disabled={problems.size > 0} aria-describedby={problems.size > 0 ? "save-reasons" : undefined}>{isNew ? "Create routine" : "Save"}</button>
+      <button type="submit" class="primary" disabled={problems.size > 0 || saving} aria-describedby={problems.size > 0 ? "save-reasons" : undefined}>{isNew ? "Create routine" : "Save"}</button>
     </div>
   </div>
 </form>

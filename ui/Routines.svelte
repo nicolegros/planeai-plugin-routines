@@ -11,8 +11,13 @@
 
   const REFRESH_MS = 30_000;
 
-  /** The whole settings document; keys other than `routines` belong to PlaneAI or other features and are written back untouched. */
-  let settings = $state<Record<string, unknown> | null>(null);
+  type Document = Record<string, unknown>;
+  type Edit = (entries: unknown[]) => unknown[];
+
+  /** The settings document as PlaneAI last returned it; keys other than `routines` belong to PlaneAI or other features and are written back untouched. Raw, so it stays a plain object PlaneAI's bridge can post. */
+  let stored = $state.raw<Document | null>(null);
+  /** Edits not saved yet, shown over the stored document until their save settles. */
+  let pending = $state.raw<Edit[]>([]);
   let loadFailure = $state<string | null>(null);
   let projects = $state<Project[] | null>(null);
   let projectsFailure = $state<string | null>(null);
@@ -22,11 +27,14 @@
   let statusFailure = $state<string | null>(null);
   let now = $state(new Date());
   let editing = $state<{ draft: Draft; isNew: boolean } | null>(null);
+  let submitting = $state(false);
   let running = $state<Record<string, boolean>>({});
-  /** Saves run one after another, so each writes the document the previous one left. */
-  let saving: Promise<unknown> = Promise.resolve();
+  /** Reads and writes of the stored document run one after another, so a slow read never replaces a newer write. */
+  let queue: Promise<unknown> = Promise.resolve();
 
-  const entries = $derived<unknown[]>(Array.isArray(settings?.routines) ? settings.routines : []);
+  const routinesOf = (document: Document | null): unknown[] => (Array.isArray(document?.routines) ? document.routines : []);
+  const settings = $derived(stored && pending.reduce<Document>((document, apply) => ({ ...document, routines: apply(routinesOf(document)) }), stored));
+  const entries = $derived(routinesOf(settings));
   const parsed = $derived(parseRoutines(settings));
   const byId = $derived(new Map(parsed.routines.map((routine) => [routine.id, routine])));
   const rows = $derived(
@@ -38,13 +46,22 @@
 
   const describeError = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 
-  async function load(): Promise<void> {
-    loadFailure = null;
-    try {
-      settings = await context.host.settings.get();
-    } catch (reason) {
-      loadFailure = `Could not load routines: ${describeError(reason)}`;
-    }
+  function serialized<T>(step: () => Promise<T>): Promise<T> {
+    const run = queue.then(step);
+    queue = run.catch(() => {});
+    return run;
+  }
+
+  /** Re-reads the routines; a failure keeps the ones already shown. */
+  function load(): Promise<void> {
+    return serialized(async () => {
+      try {
+        stored = await context.host.settings.get();
+        loadFailure = null;
+      } catch (reason) {
+        if (!stored) loadFailure = `Could not load routines: ${describeError(reason)}`;
+      }
+    });
   }
 
   async function loadProjects(): Promise<void> {
@@ -82,22 +99,40 @@
     void loadProviders();
     void refreshStatus();
     const timer = setInterval(() => void refreshStatus(), REFRESH_MS);
-    return () => clearInterval(timer);
+    // PlaneAI says so after each check and when another view changes the plugin's data.
+    const unlisten = context.host.data.onChanged(() => {
+      void load();
+      void refreshStatus();
+    });
+    return () => {
+      clearInterval(timer);
+      unlisten();
+    };
   });
 
-  function save(next: unknown[]): void {
-    const document = { ...settings, routines: next };
-    settings = document;
-    saving = saving.then(async () => {
+  /**
+   * Applies `apply` to the routines PlaneAI has when the save runs, not to the ones shown, so a change made
+   * elsewhere since they were read is kept, and an edit whose save failed is never written by a later one.
+   */
+  async function save(apply: Edit): Promise<boolean> {
+    pending = [...pending, apply];
+    const saved = await serialized(async () => {
       try {
-        await context.host.settings.replace(document);
+        const current = await context.host.settings.get();
+        const next = { ...current, routines: apply(routinesOf(current)) };
+        await context.host.settings.replace(next);
+        stored = next;
+        return true;
       } catch (reason) {
         context.host.data.notify(`Could not save routines: ${describeError(reason)}`, "error");
-        await load();
-        return;
+        stored = await context.host.settings.get().catch(() => stored);
+        return false;
+      } finally {
+        pending = pending.filter((candidate) => candidate !== apply);
       }
-      await refreshStatus();
     });
+    if (saved) await refreshStatus();
+    return saved;
   }
 
   async function focus(selector: string): Promise<void> {
@@ -119,21 +154,27 @@
     void focus(id ? `[data-edit="${CSS.escape(id)}"]` : "[data-new-routine]");
   }
 
-  function submit(draft: Draft): void {
-    const entry = toEntry(draft);
-    if (!("routine" in checkRoutine(entry))) return;
-    const index = entries.findIndex((candidate, position) => routineKey(candidate, position) === draft.id);
-    save(index === -1 ? [...entries, entry] : entries.map((candidate, position) => (position === index ? entry : candidate)));
+  async function submit(draft: Draft): Promise<void> {
+    const entry = $state.snapshot(toEntry(draft));
+    if (submitting || !("routine" in checkRoutine(entry))) return;
+    submitting = true;
+    const saved = await save((current) => {
+      const index = current.findIndex((candidate, position) => routineKey(candidate, position) === draft.id);
+      return index === -1 ? [...current, entry] : current.map((candidate, position) => (position === index ? entry : candidate));
+    });
+    submitting = false;
+    // A failed save leaves the editor open with the draft, to retry or cancel.
+    if (!saved) return;
     editing = null;
     void focus(`[data-edit="${CSS.escape(draft.id)}"]`);
   }
 
   function setEnabled(key: string, enabled: boolean): void {
-    save(entries.map((entry, index) => (routineKey(entry, index) === key && entry && typeof entry === "object" ? { ...entry, enabled } : entry)));
+    void save((current) => current.map((entry, index) => (routineKey(entry, index) === key && entry && typeof entry === "object" ? { ...entry, enabled } : entry)));
   }
 
   function remove(key: string): void {
-    save(entries.filter((entry, index) => routineKey(entry, index) !== key));
+    void save((current) => current.filter((entry, index) => routineKey(entry, index) !== key));
     void focus("[data-new-routine]");
   }
 
@@ -183,7 +224,8 @@
       {providers}
       {providersFailure}
       onRetryProviders={() => void loadProviders()}
-      onSave={submit}
+      saving={submitting}
+      onSave={(draft) => void submit(draft)}
       onCancel={closeEditor}
     />
   {:else if rows.length === 0}

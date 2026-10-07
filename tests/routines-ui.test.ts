@@ -4,7 +4,7 @@ import type { RoutineStatus, RoutinesUiContext } from "../ui/host";
 import Routines from "../ui/Routines.svelte";
 
 const settle = async () => {
-  for (let i = 0; i < 10; i++) await Promise.resolve();
+  for (let i = 0; i < 50; i++) await Promise.resolve();
   flushSync();
 };
 
