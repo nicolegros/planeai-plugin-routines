@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { checkRoutine, parseSchedule, PRIORITIES, WEEKDAYS, type Field, type Weekday } from "../src/routine";
-  import { nextRun } from "../src/schedule";
+  import { HORIZON_DAYS, nextRun } from "../src/schedule";
   import { PLACEHOLDERS, render } from "../src/template";
   import { PRESETS, PRIORITY_LABELS, toEntry, toSchedule, type Draft } from "./draft";
   import { absolute } from "./format";
@@ -278,7 +278,7 @@
     {#if !schedule}
       <p class="muted">Finish the schedule to see when it runs.</p>
     {:else if runs.length === 0}
-      <p class="muted">This schedule does not run in the next 400 days.</p>
+      <p class="muted">This schedule does not run in the next {HORIZON_DAYS} days.</p>
     {:else}
       <ol class="runs">
         {#each runs as run (run.getTime())}

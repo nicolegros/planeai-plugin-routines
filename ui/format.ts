@@ -1,3 +1,6 @@
+/** How often run times are re-read and relative times like "in 3 minutes" redrawn. */
+export const REFRESH_MS = 30_000;
+
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["year", 365 * 86_400],
   ["month", 30 * 86_400],

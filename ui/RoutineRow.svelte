@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import type { Routine } from "../src/routine";
-  import { describe } from "../src/schedule";
+  import { describe, HORIZON_DAYS } from "../src/schedule";
   import { absolute, relative } from "./format";
   import type { Project, RoutineStatus } from "./host";
   import { providerName, type SessionProviders } from "./providers";
@@ -87,7 +87,7 @@
           {:else if nextRun}
             <dd><time datetime={nextRun.toISOString()} title={nextRun.toLocaleString()}>{relative(nextRun, now)}</time> <span class="muted">· {absolute(nextRun)}</span></dd>
           {:else if status}
-            <dd class="muted">None in the next 400 days</dd>
+            <dd class="muted">None in the next {HORIZON_DAYS} days</dd>
           {:else}
             <dd class="muted">…</dd>
           {/if}

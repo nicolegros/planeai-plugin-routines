@@ -3,7 +3,8 @@ import { WEEKDAYS, type Schedule, type Weekday } from "./routine";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** No search looks further than this, so a schedule that never or rarely matches stays cheap. */
-export const HORIZON_MS = 400 * DAY_MS;
+export const HORIZON_DAYS = 400;
+export const HORIZON_MS = HORIZON_DAYS * DAY_MS;
 
 const CRON_NUMBER: Record<Weekday, number> = {
   mon: 1,

@@ -2,14 +2,13 @@
   import { onMount, tick } from "svelte";
   import { checkRoutine, parseRoutines, routineKey, type Routine } from "../src/routine";
   import { newDraft, newId, toDraft, toEntry, type Draft } from "./draft";
+  import { REFRESH_MS } from "./format";
   import type { Project, RoutineStatus, RoutinesUiContext, TaskCreation } from "./host";
   import type { SessionProviders } from "./providers";
   import RoutineEditor from "./RoutineEditor.svelte";
   import RoutineRow from "./RoutineRow.svelte";
 
   let { context }: { context: RoutinesUiContext } = $props();
-
-  const REFRESH_MS = 30_000;
 
   type Document = Record<string, unknown>;
   type Edit = (entries: unknown[]) => unknown[];
