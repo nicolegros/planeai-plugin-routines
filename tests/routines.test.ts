@@ -42,6 +42,8 @@ function harness(routines: unknown[] = [retro()]) {
     /** Where a requested session stands when PlaneAI replays an operation it already created. */
     replayed: { session: "exists" } as Pick<TaskCreation, "session" | "session_error">,
     beforeCreate: () => {},
+    /** PlaneAI creates the next task but gives up on the request before replying. */
+    loseReply: false,
   };
   const host: Host = {
     settings: async () => world.settings,
@@ -54,6 +56,10 @@ function harness(routines: unknown[] = [retro()]) {
       created.push(request);
       const task = { key: `APP-${created.length}`, title: request.title };
       operations.set(request.operation_id, task);
+      if (world.loseReply) {
+        world.loseReply = false;
+        throw new RpcError(-32800, "request cancelled");
+      }
       return { task, ...(request.start ? { session: "starting" as const } : {}) };
     },
   };
@@ -453,14 +459,16 @@ describe("RoutinesPlugin", () => {
     await tick();
     world.settings = { routines: [retro({ enabled: false })] };
     at("2026-10-06T15:30:12.345Z");
-    await expect(plugin.handle("routines.runNow", { id: "r1" })).resolves.toEqual({
+    await expect(
+      plugin.handle("routines.runNow", { id: "r1", action_id: "4f1c2a9e-click" }),
+    ).resolves.toEqual({
       task: { key: "APP-1", title: "Retro 2026-10-06" },
       session: "starting",
     });
     expect(created).toEqual([
       {
         project_path: "/work/app",
-        operation_id: "routine:r1:manual:2026-10-06T15:30:12.345Z",
+        operation_id: "routine:r1:manual:4f1c2a9e-click",
         title: "Retro 2026-10-06",
         description: "Tuesday at 11:30",
         priority: 3,
@@ -473,12 +481,38 @@ describe("RoutinesPlugin", () => {
 
   it("refuses to run a routine that is missing or invalid", async () => {
     const { plugin } = harness([retro({ id: "r3", task: { title: "" } })]);
-    await expect(plugin.handle("routines.runNow", { id: "nope" })).rejects.toThrow(
+    await expect(plugin.handle("routines.runNow", { id: "nope", action_id: "a1" })).rejects.toThrow(
       "This routine no longer exists.",
     );
-    await expect(plugin.handle("routines.runNow", { id: "r3" })).rejects.toThrow(
+    await expect(plugin.handle("routines.runNow", { id: "r3", action_id: "a1" })).rejects.toThrow(
       "Enter a task title.",
     );
-    await expect(plugin.handle("routines.runNow", {})).rejects.toMatchObject({ code: -32602 });
+    await expect(plugin.handle("routines.runNow", { action_id: "a1" })).rejects.toMatchObject({
+      code: -32602,
+    });
+    await expect(plugin.handle("routines.runNow", { id: "r3" })).rejects.toMatchObject({
+      code: -32602,
+      message: "action_id must be a nonempty string of at most 64 characters",
+    });
+  });
+
+  it("creates one task per Run now action, however often that action is retried", async () => {
+    const { plugin, at, world, created } = harness();
+    world.loseReply = true;
+    at("2026-10-06T15:30:12Z");
+    await expect(
+      plugin.handle("routines.runNow", { id: "r1", action_id: "click-1" }),
+    ).rejects.toMatchObject({ code: -32800 });
+    at("2026-10-06T15:30:20Z");
+    await expect(
+      plugin.handle("routines.runNow", { id: "r1", action_id: "click-1" }),
+    ).resolves.toMatchObject({ task: { key: "APP-1" } });
+    await expect(
+      plugin.handle("routines.runNow", { id: "r1", action_id: "click-2" }),
+    ).resolves.toMatchObject({ task: { key: "APP-2" } });
+    expect(created.map((task) => task.operation_id)).toEqual([
+      "routine:r1:manual:click-1",
+      "routine:r1:manual:click-2",
+    ]);
   });
 });
