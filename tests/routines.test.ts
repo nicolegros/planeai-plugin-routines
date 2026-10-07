@@ -1,9 +1,15 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RpcError } from "../src/rpc";
-import { RoutinesPlugin, type Host, type TaskCreation, type TaskRequest } from "../src/routines";
+import {
+  RoutinesPlugin,
+  type CreatedTask,
+  type Host,
+  type TaskCreation,
+  type TaskRequest,
+} from "../src/routines";
 import { StateStore } from "../src/state";
 
 const manifest = JSON.parse(readFileSync(join(process.cwd(), "planeai-plugin.json"), "utf8"));
@@ -28,31 +34,34 @@ function harness(routines: unknown[] = [retro()]) {
   const dir = mkdtempSync(join(tmpdir(), "routines-plugin-"));
   const statePath = join(dir, "routines-state.json");
   const created: TaskRequest[] = [];
+  const operations = new Map<string, CreatedTask>();
   const world = {
     settings: { tick_interval_ms: 30_000, routines } as Record<string, unknown>,
     now: new Date("2026-10-06T12:00:00Z"),
     failure: null as Error | null,
-    /** How PlaneAI answers a request that asked for a session; it starts by default. */
-    session: { session: "starting" } as Pick<TaskCreation, "session" | "session_error">,
+    /** Where a requested session stands when PlaneAI replays an operation it already created. */
+    replayed: { session: "exists" } as Pick<TaskCreation, "session" | "session_error">,
     beforeCreate: () => {},
   };
   const host: Host = {
     settings: async () => world.settings,
+    // PlaneAI dedupes on the operation id: a retry returns the original task, and the first start's outcome.
     createTask: async (request) => {
       world.beforeCreate();
       if (world.failure) throw world.failure;
+      const known = operations.get(request.operation_id);
+      if (known) return { task: known, ...(request.start ? world.replayed : {}) };
       created.push(request);
-      return {
-        task: { key: `APP-${created.length}`, title: request.title },
-        ...(request.start ? world.session : {}),
-      };
+      const task = { key: `APP-${created.length}`, title: request.title };
+      operations.set(request.operation_id, task);
+      return { task, ...(request.start ? { session: "starting" as const } : {}) };
     },
   };
   const plugin = new RoutinesPlugin(host, new StateStore(statePath), () => world.now);
   const at = (instant: string) => (world.now = new Date(instant));
   const tick = () => plugin.handle("routines.tick", null);
   const state = () => JSON.parse(readFileSync(statePath, "utf8"));
-  return { plugin, world, created, at, tick, state };
+  return { plugin, world, created, at, tick, state, statePath };
 }
 
 describe("RoutinesPlugin", () => {
@@ -213,25 +222,54 @@ describe("RoutinesPlugin", () => {
     expect(state().r1).toMatchObject({ last_task_key: "APP-1", last_error: null });
   });
 
-  it("records a session PlaneAI could not start on the task it created", async () => {
-    const { tick, at, world, state } = harness();
-    world.session = { session: "failed", session_error: "Unknown provider: claude" };
-    world.settings.routines = [
+  it("records the failed session PlaneAI replays when a lost state save makes it retry the operation", async () => {
+    const { tick, at, world, created, state, statePath } = harness([
       retro({
         task: {
           ...retro().task,
           start: { enabled: true, provider: "claude", use_worktree: true, auto_approve: true },
         },
       }),
-    ];
+    ]);
     await tick();
+    const beforeFiring = readFileSync(statePath, "utf8");
     at("2026-10-06T13:00:10Z");
     await expect(tick()).resolves.toEqual({ created: 1 });
-    expect(state().r1).toMatchObject({
+    // The sidecar was killed before its state reached the disk, then the session failed to start.
+    writeFileSync(statePath, beforeFiring);
+    world.replayed = {
+      session: "failed",
+      session_error: "failed to create worktree dir: Permission denied (os error 13)",
+    };
+    at("2026-10-06T13:00:40Z");
+    await tick();
+    expect(created.map((task) => task.operation_id)).toEqual(["routine:r1:2026-10-06T13:00:00Z"]);
+    expect(state().r1).toEqual({
+      fingerprint: "0 9 * * 1,2,3,4,5",
       last_fired: "2026-10-06T13:00:00.000Z",
       last_task_key: "APP-1",
-      last_error: "APP-1 was created, but its session could not start: Unknown provider: claude",
+      last_error:
+        "APP-1 was created, but its session could not start: failed to create worktree dir: Permission denied (os error 13)",
     });
+    at("2026-10-06T13:01:10Z");
+    await expect(tick()).resolves.toEqual({ created: 0 });
+  });
+
+  it("retries the same occurrence while PlaneAI is temporarily unavailable", async () => {
+    const { tick, at, world, created, state } = harness();
+    await tick();
+    at("2026-10-06T13:00:10Z");
+    world.failure = new RpcError(-32004, "provider plugin claude-chat is not running yet");
+    await expect(tick()).resolves.toEqual({ created: 0 });
+    expect(state().r1).toMatchObject({
+      last_fired: "2026-10-06T12:00:00.000Z",
+      last_error: "provider plugin claude-chat is not running yet",
+    });
+    world.failure = null;
+    at("2026-10-06T13:00:40Z");
+    await expect(tick()).resolves.toEqual({ created: 1 });
+    expect(created.map((task) => task.operation_id)).toEqual(["routine:r1:2026-10-06T13:00:00Z"]);
+    expect(state().r1).toMatchObject({ last_task_key: "APP-1", last_error: null });
   });
 
   it("never fires a disabled routine, and re-enabling it does not fire a stale occurrence", async () => {
