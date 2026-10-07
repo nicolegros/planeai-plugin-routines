@@ -56,16 +56,42 @@ function harness(
         }) as RoutinesUiContext["host"]["rpc"]["call"],
       },
       settings: {
-        get: (async () => settings) as RoutinesUiContext["host"]["settings"]["get"],
+        get: (async () =>
+          structuredClone(world.stored)) as RoutinesUiContext["host"]["settings"]["get"],
+        // Cloned like PlaneAI's bridge does when it posts the document out of the frame.
         replace: (async (next: Record<string, unknown>) => {
-          replaced.push(next);
-          return next;
+          const posted = structuredClone(next);
+          const failure = world.replaceFailures.shift();
+          if (failure) throw failure;
+          replaced.push(posted);
+          world.stored = structuredClone(posted);
+          return posted;
         }) as RoutinesUiContext["host"]["settings"]["replace"],
       },
-      data: { notify: vi.fn() },
+      data: {
+        notify: vi.fn(),
+        onChanged: (listener) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      },
     },
   };
-  return { context, replaced, call, notify: context.host.data.notify as ReturnType<typeof vi.fn> };
+  const listeners = new Set<() => void>();
+  /** PlaneAI's copy of the settings, and the failures its next replaces answer with. */
+  const world = {
+    stored: structuredClone(settings),
+    replaceFailures: [] as Error[],
+    /** PlaneAI telling the dialog its data changed, as after a background tick. */
+    changed: () => listeners.forEach((listener) => listener()),
+  };
+  return {
+    context,
+    replaced,
+    call,
+    world,
+    notify: context.host.data.notify as ReturnType<typeof vi.fn>,
+  };
 }
 
 const button = (name: string) => {
