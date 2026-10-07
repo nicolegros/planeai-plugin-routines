@@ -300,6 +300,68 @@ describe("Routines dialog", () => {
     ]);
   });
 
+  it("keeps the editor and its draft open when the save fails, and closes it once a retry saves", async () => {
+    const { context, world, replaced, notify } = harness({ routines: [retro] });
+    await open(context);
+    button("Edit Weekly retro").click();
+    flushSync();
+    type(field("Name"), "Renamed retro");
+    world.replaceFailures.push(new Error("disk full"));
+    button("Save").click();
+    await settle();
+    expect(notify).toHaveBeenLastCalledWith("Could not save routines: disk full", "error");
+    expect(field("Name").value).toBe("Renamed retro");
+    expect(replaced).toEqual([]);
+    button("Save").click();
+    await settle();
+    expect(document.querySelector("form")).toBeNull();
+    expect((replaced[0].routines as { name: string }[]).map((routine) => routine.name)).toEqual([
+      "Renamed retro",
+    ]);
+  });
+
+  it("never writes back a change whose save failed with a later save", async () => {
+    const other = { ...retro, id: "r2", name: "Other" };
+    const { context, world, replaced } = harness({ routines: [retro, other] });
+    await open(context);
+    world.replaceFailures.push(new Error("disk full"));
+    document.querySelector<HTMLInputElement>('[aria-label="Enable Weekly retro"]')!.click();
+    document.querySelector<HTMLInputElement>('[aria-label="Enable Other"]')!.click();
+    await settle();
+    expect(replaced).toEqual([{ routines: [retro, { ...other, enabled: false }] }]);
+    expect(
+      document.querySelector<HTMLInputElement>('[aria-label="Enable Weekly retro"]')!.checked,
+    ).toBe(true);
+    expect(document.querySelector<HTMLInputElement>('[aria-label="Enable Other"]')!.checked).toBe(
+      false,
+    );
+  });
+
+  it("keeps a routine another writer added, and shows it when PlaneAI says the data changed", async () => {
+    const added = { ...retro, id: "r9", name: "Added elsewhere" };
+    const { context, world, replaced, call } = harness({
+      tick_interval_ms: 30_000,
+      routines: [retro],
+    });
+    await open(context);
+    world.stored = { tick_interval_ms: 60_000, routines: [retro, added] };
+    document.querySelector<HTMLInputElement>('[aria-label="Enable Weekly retro"]')!.click();
+    await settle();
+    expect(replaced).toEqual([
+      { tick_interval_ms: 60_000, routines: [{ ...retro, enabled: false }, added] },
+    ]);
+    expect(document.querySelector('[aria-labelledby="routine-r9"]')?.textContent).toContain(
+      "Added elsewhere",
+    );
+
+    world.stored = { tick_interval_ms: 60_000, routines: [{ ...retro, enabled: false }] };
+    const statusCalls = call.mock.calls.length;
+    world.changed();
+    await settle();
+    expect(document.querySelector('[aria-labelledby="routine-r9"]')).toBeNull();
+    expect(call.mock.calls.slice(statusCalls)).toEqual([["routines.status"]]);
+  });
+
   it("shows the next run, the last task and errors from the sidecar", async () => {
     const { context } = harness(
       {
