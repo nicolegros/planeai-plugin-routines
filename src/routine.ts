@@ -9,8 +9,8 @@ export type Schedule =
   | { kind: "monthly"; time: string; day: number }
   | { kind: "cron"; expression: string };
 
-/** PlaneAI's task priorities: a higher number is more urgent, 0 is none. */
-export const PRIORITIES = [0, 1, 2, 3] as const;
+/** PlaneAI's task priorities, the scale its Jira plugin writes: 0 is none, 1 lowest to 5 highest. */
+export const PRIORITIES = [0, 1, 2, 3, 4, 5] as const;
 export type Priority = (typeof PRIORITIES)[number];
 
 /** The session PlaneAI starts on the created task; `provider: null` is PlaneAI's default provider. */
@@ -121,7 +121,7 @@ function parseTask(value: unknown, problems: Problem[]): TaskTemplate | null {
   const { title: rawTitle, description: rawDescription = "", priority: rawPriority = 0, tags: rawTags = [], start: rawStart } = value;
   const title = isText(rawTitle) ? rawTitle : fail("title", "Enter a task title.");
   const description = typeof rawDescription === "string" ? rawDescription : fail("description", "Description must be text.");
-  const priority = isPriority(rawPriority) ? rawPriority : fail("priority", "Priority must be 0, 1, 2 or 3.");
+  const priority = isPriority(rawPriority) ? rawPriority : fail("priority", "Priority must be a whole number from 0 to 5.");
   const tags = Array.isArray(rawTags) && rawTags.every((tag) => typeof tag === "string") ? normalizeTags(rawTags) : fail("tags", "Tags must be a list of text.");
   const start = parseStart(rawStart, problems);
   return title === null || description === null || priority === null || tags === null || start === null ? null : { title, description, priority, tags, start };

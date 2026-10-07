@@ -136,7 +136,8 @@ describe("Routines dialog", () => {
     type(field("Time"), "07:30");
     type(field("Title"), "Notes for week {{week}}");
     type(field<HTMLTextAreaElement>("Description"), "Collect {{month}} changes");
-    choose(field<HTMLSelectElement>("Priority"), "3");
+    expect(Array.from(field<HTMLSelectElement>("Priority").options, (option) => option.text)).toEqual(["None", "Lowest", "Low", "Medium", "High", "Highest"]);
+    choose(field<HTMLSelectElement>("Priority"), "5");
     type(field("Tags"), " release, docs ,release,");
     button("Create routine").click();
     await settle();
@@ -156,7 +157,7 @@ describe("Routines dialog", () => {
             task: {
               title: "Notes for week {{week}}",
               description: "Collect {{month}} changes",
-              priority: 3,
+              priority: 5,
               tags: ["release", "docs"],
               start: { enabled: true, provider: null, use_worktree: true, auto_approve: true },
             },

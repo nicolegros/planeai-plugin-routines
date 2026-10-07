@@ -11,7 +11,7 @@ export const PRESETS = [
 export type Preset = (typeof PRESETS)[number]["id"];
 
 /** PlaneAI's labels: a higher number is more urgent. */
-export const PRIORITY_LABELS: Record<Priority, string> = { 0: "None", 1: "Low", 2: "Medium", 3: "High" };
+export const PRIORITY_LABELS: Record<Priority, string> = { 0: "None", 1: "Lowest", 2: "Low", 3: "Medium", 4: "High", 5: "Highest" };
 
 const WORKWEEK: Weekday[] = ["mon", "tue", "wed", "thu", "fri"];
 

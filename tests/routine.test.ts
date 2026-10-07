@@ -70,7 +70,7 @@ describe("parseRoutines", () => {
     ["task", { ...valid, task: "Retro" }, "Task must be an object."],
     ["title", { ...valid, task: { ...valid.task, title: "" } }, "Enter a task title."],
     ["description", { ...valid, task: { ...valid.task, description: 3 } }, "Description must be text."],
-    ["priority", { ...valid, task: { ...valid.task, priority: 4 } }, "Priority must be 0, 1, 2 or 3."],
+    ["priority", { ...valid, task: { ...valid.task, priority: 6 } }, "Priority must be a whole number from 0 to 5."],
     ["tags", { ...valid, task: { ...valid.task, tags: "a,b" } }, "Tags must be a list of text."],
     ["session start", { ...valid, task: { ...valid.task, start: true } }, "Session start must be an object."],
     ["start switch", { ...valid, task: { ...valid.task, start: { enabled: "yes" } } }, "Start session must be true or false."],

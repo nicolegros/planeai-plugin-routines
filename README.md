@@ -25,12 +25,12 @@ The plugin asks for the `settings`, `projects.read`, `tasks.create` and `session
 - **Time zone.** Schedules run in the time zone of the machine PlaneAI runs on, through [croner](https://github.com/Hexagon/croner).
 - **Placeholders.** The title and description may use `{{date}}` (2026-10-06), `{{time}}` (09:00), `{{weekday}}` (Tuesday), `{{week}}` (ISO week number), `{{month}}` (October), `{{year}}` (2026) and `{{routine}}` (the routine's name).
   They are filled in from the time the task was due, not the time it was created, and unknown placeholders are left as written.
-- **Priority.** None, Low, Medium or High, PlaneAI's own levels, where a higher level is more urgent.
+- **Priority.** None, Lowest, Low, Medium, High or Highest, stored as 0 to 5 like PlaneAI's other tasks, where a higher level is more urgent.
 - **Sessions.** Like **Start session immediately** in PlaneAI's task form, which is also the default here, a routine can have PlaneAI start a session on each task it creates.
   It picks the provider (PlaneAI's default unless one is chosen), whether the session gets a worktree, and auto-approve, which is off for providers that do not support it.
   The branch, session name and prompt follow PlaneAI's task templates, and the task moves to In Progress.
   Routines saved before this option existed start a session too.
-  PlaneAI starts the session in the background, at most once per task, and reports a failed start itself; the routine also shows it once PlaneAI answers a retried request with the failure.
+  PlaneAI starts the session in the background, at most once per task, and reports a failed start itself, naming the plugin.
   With PlaneAI's `local` session backend, the agent only starts when its terminal is opened, so a routine's session waits until you open it.
 - **Checking.** PlaneAI calls the plugin every 30 seconds while it is enabled, and right after the routines are saved.
   Set `tick_interval_ms` in the plugin's settings to change the interval.
